@@ -54,10 +54,8 @@ export const InferenceTester: React.FC<InferenceTesterProps> = ({ model }) => {
     );
 
     // State for 'mnist' mode
-    // FIX: Corrected typo from MmistSample to MnistSample.
     const [mnistSamples, setMnistSamples] = useState<MnistSample[]>([]);
     const [isLoadingMnist, setIsLoadingMnist] = useState(false);
-    // FIX: Corrected typo from MmistSample to MnistSample.
     const [droppedImages, setDroppedImages] = useState<(MnistSample | null)[]>(Array(10).fill(null));
     const [mnistPredictions, setMnistPredictions] = useState<(number | null)[]>(Array(10).fill(null));
     const samplesRef = useRef(mnistSamples);
@@ -69,25 +67,9 @@ export const InferenceTester: React.FC<InferenceTesterProps> = ({ model }) => {
             const loadMnistData = async () => {
                 setIsLoadingMnist(true);
                 try {
-                    const data = new MnistData();
-                    await data.load();
-                    const { images: testImages, labels: testLabels } = data.getTestData();
-                    const testLabelsArray = await testLabels.argMax(-1).data() as Uint8Array;
-                    
-                    const samples: MnistSample[] = [];
-                    // Slice the first 100 images
-                    const imageSlices = tf.split(testImages.slice([0, 0], [100, 784]), 100);
-                    
-                    for (let i = 0; i < 100; i++) {
-                        samples.push({
-                            tensor: imageSlices[i],
-                            label: testLabelsArray[i],
-                            id: i,
-                        });
-                    }
+                    const data = await MnistData.getInstance();
+                    const samples = data.getTestSamplesForInference(100);
                     setMnistSamples(samples);
-                    tf.dispose([testImages, testLabels]);
-
                 } catch (error) {
                     console.error("Failed to load MNIST data for testing:", error);
                 } finally {
@@ -98,10 +80,16 @@ export const InferenceTester: React.FC<InferenceTesterProps> = ({ model }) => {
         }
     }, [testMode, mnistSamples.length]);
 
-    // Cleanup tensors on unmount
+    // Cleanup tensors from samples on unmount
     useEffect(() => {
         return () => {
-            samplesRef.current.forEach(sample => sample.tensor.dispose());
+            // The singleton now manages tensors, but if we created copies, we'd dispose them here.
+            // This is just for good practice, though not strictly needed with the new singleton.
+            samplesRef.current.forEach(sample => {
+                if (sample && sample.tensor && !sample.tensor.isDisposed) {
+                    // sample.tensor.dispose(); // Disabled as singleton manages this
+                }
+            });
         };
     }, []);
 

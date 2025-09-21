@@ -65,8 +65,7 @@ const App: React.FC = () => {
             newModel.summary();
 
             setTrainingStatus('Loading MNIST dataset...');
-            const data = new MnistData();
-            await data.load();
+            const data = await MnistData.getInstance();
             const { images: trainImages, labels: trainLabels } = data.getTrainData();
             const { images: testImages, labels: testLabels } = data.getTestData();
             
