@@ -1,5 +1,6 @@
 import * as tf from '@tensorflow/tfjs';
 import type { ModelConfig } from '../types';
+import { getLearningRate } from './lrSchedulerService';
 
 const MODEL_STORAGE_KEY = 'localstorage://mnist-model';
 const MODEL_DOWNLOAD_KEY = 'downloads://mnist-model';
@@ -59,6 +60,7 @@ export function createModel(config: ModelConfig): tf.Sequential {
         }));
     }
 
+    // Fix: `tf.optimizers` is deprecated. Use `tf.train` to create optimizers.
     const optimizer = tf.train.adam(config.learningRate);
     model.compile({
         optimizer: optimizer,
@@ -76,19 +78,50 @@ export async function trainModel(
     testImages: tf.Tensor,
     testLabels: tf.Tensor,
     config: ModelConfig,
-    onEpochEnd: (epoch: number, logs: any) => void
+    onEpochEndCallback: (epoch: number, logs: tf.Logs, lr: number) => Promise<void>
 ): Promise<tf.History> {
+
+    const { learningRate: initialLr, epochs, lrSchedule } = config;
+    let currentLr = initialLr;
+    const valAccHistory: number[] = [];
+
+    const lrCallback = new tf.CustomCallback({
+        onEpochBegin: async (epoch) => {
+            currentLr = getLearningRate(
+                lrSchedule,
+                epoch,
+                epochs,
+                initialLr,
+                valAccHistory
+            );
+            // The `setLearningRate` method is not consistently available at runtime.
+            // Directly setting the `learningRate` property is a more robust workaround.
+            // We cast to 'any' to bypass TypeScript's protected property access check.
+            (model.optimizer as any).learningRate = currentLr;
+        },
+    });
+
+    const appCallback = new tf.CustomCallback({
+         onEpochEnd: async (epoch, logs) => {
+            if (logs) {
+                 if (logs.val_acc) {
+                    valAccHistory.push(logs.val_acc as number);
+                }
+                await onEpochEndCallback(epoch, logs, currentLr);
+            }
+        }
+    });
+
 
     return model.fit(trainImages, trainLabels, {
         batchSize: config.batchSize,
         validationData: [testImages, testLabels],
         epochs: config.epochs,
         shuffle: true,
-        callbacks: {
-            onEpochEnd,
-        },
+        callbacks: [lrCallback, appCallback],
     });
 }
+
 
 export async function saveModel(model: tf.Sequential): Promise<void> {
     await model.save(MODEL_STORAGE_KEY);

@@ -1,4 +1,15 @@
 import React from 'react';
+import type { LRSchedulerConfig } from './types';
+
+export const LEARNING_RATE_SCHEDULES: LRSchedulerConfig[] = [
+    { id: 'constant', name: 'Constant', description: 'Uses a fixed learning rate throughout training.' },
+    { id: 'step', name: 'Step Decay', description: 'Reduces the learning rate by a factor at specific epochs.' },
+    { id: 'exponential', name: 'Exponential Decay', description: 'Gradually reduces the learning rate exponentially.' },
+    { id: 'cosine', name: 'Cosine Annealing', description: 'Reduces LR following the shape of a cosine curve.' },
+    { id: 'warmup-cosine', name: 'Warm-up & Cosine', description: 'Starts low, warms up, then follows a cosine curve.' },
+    { id: 'plateau', name: 'Reduce on Plateau', description: 'Reduces LR when validation accuracy stops improving. Graph is illustrative.' },
+    { id: 'one-cycle', name: 'One-Cycle Policy', description: 'Increases LR to a max, then decreases it, over one cycle.' },
+];
 
 export const PlayIcon: React.FC<{className?: string}> = ({ className }) => (
     <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
@@ -107,5 +118,13 @@ export const DownloadIcon: React.FC<{className?: string}> = ({ className }) => (
         <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
         <polyline points="7 10 12 15 17 10"></polyline>
         <line x1="12" y1="15" x2="12" y2="3"></line>
+    </svg>
+);
+
+export const LayersIcon: React.FC<{className?: string}> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+        <polygon points="12 2 2 7 12 12 22 7 12 2"></polygon>
+        <polyline points="2 17 12 22 22 17"></polyline>
+        <polyline points="2 12 12 17 22 12"></polyline>
     </svg>
 );

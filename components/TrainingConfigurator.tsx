@@ -1,6 +1,8 @@
 import React from 'react';
 import type { ModelConfig, LayerConfig } from '../types';
-import { PlayIcon, PlusIcon, XIcon, StopIcon } from '../constants';
+import { PlayIcon, StopIcon, PlusIcon, XIcon, LayersIcon } from '../constants';
+import { LEARNING_RATE_SCHEDULES } from '../constants';
+import { LRScheduleVisualizer } from './LRScheduleVisualizer';
 
 interface TrainingConfiguratorProps {
     config: ModelConfig;
@@ -13,7 +15,7 @@ interface TrainingConfiguratorProps {
 const Label: React.FC<{htmlFor: string, children: React.ReactNode, tooltip: string}> = ({htmlFor, children, tooltip}) => (
     <label htmlFor={htmlFor} className="block text-sm font-medium text-gray-300 mb-1 group relative">
         {children}
-        <span className="absolute left-0 bottom-full mb-2 w-max max-w-xs bg-gray-800 text-white text-xs rounded py-1 px-2 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none shadow-lg">
+        <span className="absolute left-0 bottom-full mb-2 w-max max-w-xs bg-gray-800 text-white text-xs rounded py-1 px-2 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none shadow-lg z-10">
             {tooltip}
         </span>
     </label>
@@ -51,7 +53,6 @@ export const TrainingConfigurator: React.FC<TrainingConfiguratorProps> = ({ conf
             setConfig(prev => ({ 
                 ...prev, 
                 architecture: 'cnn',
-                // Suggest better defaults for CNN
                 learningRate: 0.001,
                 epochs: 15,
                 batchSize: 128,
@@ -97,7 +98,12 @@ export const TrainingConfigurator: React.FC<TrainingConfiguratorProps> = ({ conf
             {/* Layers Configuration */}
             {config.architecture === 'dense' ? (
                 <div>
-                    <Label htmlFor="layers" tooltip="Define the hidden layers of your neural network. More layers can capture more complex patterns but increase training time.">Hidden Layers</Label>
+                    <Label htmlFor="layers" tooltip="Define the hidden layers of your neural network. More layers can capture more complex patterns but increase training time.">
+                        <span className="flex items-center space-x-2">
+                            <LayersIcon className="w-4 h-4"/>
+                            <span>Hidden Layers</span>
+                        </span>
+                    </Label>
                     <div className="space-y-3 mt-2">
                         {config.layers.map((layer, index) => (
                             <div key={index} className="flex items-center space-x-2 bg-black/20 p-2 rounded-lg">
@@ -148,19 +154,38 @@ export const TrainingConfigurator: React.FC<TrainingConfiguratorProps> = ({ conf
 
 
             {/* Hyperparameters */}
-            <div>
-                <Label htmlFor="learningRate" tooltip="Controls how much to change the model in response to the estimated error each time the weights are updated. Smaller values require more training epochs.">Learning Rate: {config.learningRate}</Label>
-                <input
-                    id="learningRate"
-                    type="range"
-                    min="0.0001"
-                    max="0.1"
-                    step="0.0001"
-                    value={config.learningRate}
-                    onChange={(e) => setConfig(prev => ({ ...prev, learningRate: parseFloat(e.target.value) }))}
-                    className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer range-thumb-cyan"
-                    disabled={isTraining}
-                />
+            <div className="space-y-4">
+                <div>
+                    <Label htmlFor="lrSchedule" tooltip="Determines how the learning rate changes during training.">Learning Rate Schedule</Label>
+                    <select
+                        id="lrSchedule"
+                        value={config.lrSchedule}
+                        onChange={(e) => setConfig(prev => ({...prev, lrSchedule: e.target.value as ModelConfig['lrSchedule']}))}
+                        className="w-full bg-gray-900/50 border border-gray-600 rounded-md px-3 py-2 text-white focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 transition"
+                        disabled={isTraining}
+                    >
+                        {LEARNING_RATE_SCHEDULES.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                    </select>
+                </div>
+
+                 <LRScheduleVisualizer schedule={config.lrSchedule} epochs={config.epochs} initialLr={config.learningRate} />
+
+                <div>
+                    <Label htmlFor="learningRate" tooltip="Controls how much to change the model in response to the estimated error each time the weights are updated. Smaller values require more training epochs.">
+                        Learning Rate: {config.learningRate.toExponential(2)}
+                    </Label>
+                    <input
+                        id="learningRate"
+                        type="range"
+                        min="0.0001"
+                        max="0.02"
+                        step="0.0001"
+                        value={config.learningRate}
+                        onChange={(e) => setConfig(prev => ({ ...prev, learningRate: parseFloat(e.target.value) }))}
+                        className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer range-thumb-cyan"
+                        disabled={isTraining}
+                    />
+                </div>
             </div>
             
             <div className="grid grid-cols-2 gap-4">
@@ -170,7 +195,7 @@ export const TrainingConfigurator: React.FC<TrainingConfiguratorProps> = ({ conf
                         id="epochs"
                         type="number"
                         value={config.epochs}
-                        onChange={(e) => setConfig(prev => ({ ...prev, epochs: parseInt(e.target.value, 10) }))}
+                        onChange={(e) => setConfig(prev => ({ ...prev, epochs: Math.max(1, parseInt(e.target.value, 10) || 1) }))}
                         className="w-full bg-gray-900/50 border border-gray-600 rounded-md px-3 py-2 text-white focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 transition"
                         min="1"
                         disabled={isTraining}
@@ -182,7 +207,7 @@ export const TrainingConfigurator: React.FC<TrainingConfiguratorProps> = ({ conf
                         id="batchSize"
                         type="number"
                         value={config.batchSize}
-                        onChange={(e) => setConfig(prev => ({ ...prev, batchSize: parseInt(e.target.value, 10) }))}
+                        onChange={(e) => setConfig(prev => ({ ...prev, batchSize: Math.max(1, parseInt(e.target.value, 10) || 1) }))}
                         className="w-full bg-gray-900/50 border border-gray-600 rounded-md px-3 py-2 text-white focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 transition"
                         min="1"
                         step="32"
@@ -192,16 +217,14 @@ export const TrainingConfigurator: React.FC<TrainingConfiguratorProps> = ({ conf
             </div>
 
             {isTraining ? (
-                 <button
+                <button
                     onClick={onStopTraining}
+                    aria-label="Stop current training run"
                     className="w-full bg-gradient-to-r from-red-500 to-pink-500 hover:from-red-400 hover:to-pink-400 text-white font-bold py-3 px-4 rounded-full flex items-center justify-center space-x-2 transition-all duration-300 transform hover:scale-105 shadow-lg"
                 >
-                    <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
+                    <StopIcon className="w-5 h-5"/>
                     <span>Stop Training</span>
-                 </button>
+                </button>
             ) : (
                 <button
                     onClick={onStartTraining}

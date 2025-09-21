@@ -5,9 +5,26 @@ export interface LayerConfig {
     activation: 'relu' | 'sigmoid' | 'softmax' | 'tanh';
 }
 
+export type LRSchedulerId =
+    | 'constant'
+    | 'step'
+    | 'exponential'
+    | 'cosine'
+    | 'warmup-cosine'
+    | 'plateau'
+    | 'one-cycle';
+
+export interface LRSchedulerConfig {
+    id: LRSchedulerId;
+    name: string;
+    description: string;
+}
+
+
 export interface ModelConfig {
     layers: LayerConfig[];
-    learningRate: number;
+    learningRate: number; // This is the initial/max learning rate
+    lrSchedule: LRSchedulerId;
     epochs: number;
     batchSize: number;
     architecture: 'dense' | 'cnn';
@@ -17,4 +34,5 @@ export interface TrainingLog {
     epoch: number;
     loss: number;
     accuracy: number;
+    lr?: number;
 }
