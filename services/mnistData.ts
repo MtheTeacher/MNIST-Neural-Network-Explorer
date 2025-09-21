@@ -111,29 +111,44 @@ export class MnistData {
                     datasetBytes[i] = datasetBytesBuffer[i * 4] / 255;
                 }
 
-                const labels = new Uint8Array(labelsBuffer);
+                // The labels file is one-hot encoded. We need to decode it for the UI
+                // and use it directly for the tensors.
+                const labelsUint8 = new Uint8Array(labelsBuffer);
+                const labelIndices = new Uint8Array(NUM_DATASET_ELEMENTS);
+                for (let i = 0; i < NUM_DATASET_ELEMENTS; i++) {
+                    const offset = i * NUM_CLASSES;
+                    for (let j = 0; j < NUM_CLASSES; j++) {
+                        if (labelsUint8[offset + j] === 1) {
+                            labelIndices[i] = j;
+                            break;
+                        }
+                    }
+                }
 
                 // Create Tensors from the raw data and split into training and test sets.
                 // Use tf.tidy to automatically dispose intermediate tensors, but use
                 // tf.keep to prevent the final dataset tensors from being disposed.
                 tf.tidy(() => {
                     const datasetImages = tf.tensor2d(datasetBytes, [NUM_DATASET_ELEMENTS, IMAGE_SIZE]);
-                    const datasetLabels = tf.tensor1d(labels, 'int32');
+                    const datasetLabels = tf.tensor2d(labelsUint8, [NUM_DATASET_ELEMENTS, NUM_CLASSES]);
                     
                     this.trainImages = tf.keep(datasetImages.slice([0, 0], [NUM_TRAIN_ELEMENTS, IMAGE_SIZE]));
                     this.testImages = tf.keep(datasetImages.slice([NUM_TRAIN_ELEMENTS, 0], [NUM_TEST_ELEMENTS, IMAGE_SIZE]));
                     
-                    this.trainLabels = tf.keep(tf.oneHot(datasetLabels.slice([0], [NUM_TRAIN_ELEMENTS]), NUM_CLASSES));
-                    const testLabelsTensor = datasetLabels.slice([NUM_TRAIN_ELEMENTS], [NUM_TEST_ELEMENTS]);
-                    this.testLabels = tf.keep(tf.oneHot(testLabelsTensor, NUM_CLASSES));
+                    this.trainLabels = tf.keep(datasetLabels.slice([0, 0], [NUM_TRAIN_ELEMENTS, NUM_CLASSES]));
+                    this.testLabels = tf.keep(datasetLabels.slice([NUM_TRAIN_ELEMENTS, 0], [NUM_TEST_ELEMENTS, NUM_CLASSES]));
                     
-                    // Store raw test labels and split test images for the inference tester.
-                    this.testLabelSamples = Array.from(labels.slice(NUM_TRAIN_ELEMENTS));
+                    // Split test images for the inference tester.
                     const testImageSamplesTensors = tf.split(this.testImages, NUM_TEST_ELEMENTS);
                     // Keep each tensor in the split array.
                     testImageSamplesTensors.forEach(t => tf.keep(t));
                     this.testImageSamples = testImageSamplesTensors;
                 });
+
+                // Store the decoded integer test labels for the inference tester drag-and-drop UI.
+                this.testLabelSamples = Array.from(
+                    labelIndices.slice(NUM_TRAIN_ELEMENTS, NUM_DATASET_ELEMENTS)
+                );
                 
                 console.log(`Successfully loaded MNIST data from ${source.name}.`);
                 console.log(`- Training samples: ${this.numTrainElements}`);
