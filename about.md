@@ -64,8 +64,8 @@ A significant technical hurdle in this project is efficiently loading the large 
 
 To solve this, this application uses a technique called **sprite sheeting**, which is common in graphics and game development. The entire dataset of 65,000 images (55,000 for training, 10,000 for testing) is combined into a single, large PNG image file called a sprite sheet. The labels for these images are stored in a separate, compact binary file.
 
-The data loading process is handled by our `services/mnistData.ts` service, which performs the following steps:
-1.  **Fetches Data:** To ensure reliability, it attempts to download the single image sprite sheet and the binary labels file from a list of proven, highly-available sources, starting with the official Google Cloud Storage bucket used by the TensorFlow.js team. If the primary source fails, it automatically tries several backup mirrors.
+The data loading process is handled by the `services/mnistData.ts` service, which performs the following steps:
+1.  **Fetches Data:** The service downloads the image sprite sheet and the binary labels file from the official Google Cloud Storage source used by the TensorFlow.js team. This source is highly reliable and correctly configured for direct use in web applications.
 2.  **Image Parsing:** Once the sprite sheet PNG is downloaded, it's drawn onto a hidden `<canvas>` element. This is a critical step that gives us raw pixel-level access to the image data.
 3.  **Pixel Extraction:** The service reads the pixel data from the canvas. Since the images are grayscale, it only needs one color channel (e.g., red) to get the value of each pixel. It iterates through the entire sprite sheet, extracting the 784 pixels (28x28) for each of the 65,000 digits.
 4.  **Label Parsing:** The compact binary file containing the 65,000 labels is read into an array.
@@ -83,14 +83,48 @@ Previously, the application incorrectly displayed the ground-truth label for all
 
 ### Root Cause and Resolution
 
-The root cause was identified in the data loading logic within `services/mnistData.ts`. The labels file (`mnist_labels_uint8`) provided by the TensorFlow.js examples repository is not a simple list of integer digits (e.g., `5, 0, 4, ...`), but is instead **one-hot encoded**. Each label is represented by a 10-byte array where the correct digit's index is marked with a `1` (e.g., `[0,0,0,0,0,1,0,0,0,0]` for the digit `5`).
+The root cause was identified in the data loading logic within `services/mnistData.ts`. The labels file (`mnist_labels_uint8`) provided by the TensorFlow.js examples repository is not a simple list of integer digits (e.g., `5, 0, 4, ...`), but is instead **one-hot encoded**. Each label is represented by a 10-byte `Uint8Array` chunk where the correct digit's index is marked with a `1` (e.g., `[0,0,0,0,0,1,0,0,0,0]` for the digit `5`).
 
-The original code was written with the assumption that the file contained simple integer labels. When retrieving a label for the UI, it was reading only the first byte of each 10-byte one-hot vector, which was almost always `0`.
-
-The fix involved updating the data loading process to correctly parse this one-hot encoded format. The new logic now:
+The original code was written with the assumption that the file contained simple integer labels. The fix involved updating the data loading process to correctly parse this one-hot encoded format. The new logic now:
 1.  Reads the one-hot encoded buffer.
 2.  Creates a second array containing the correct integer labels (0-9) by finding the index of the `1` in each 10-byte chunk.
 3.  Uses this new array of integer labels to correctly display the "Actual" digit in the testing interface.
-4.  The label tensors for model training (`trainLabels`, `testLabels`) are now created directly from the one-hot encoded buffer, removing a redundant `tf.oneHot()` operation and improving efficiency.
+4.  The label tensors for model training (`trainLabels`, `validationLabels`) are created directly from the one-hot encoded buffer, which is the format TensorFlow.js expects for categorical cross-entropy loss.
 
 This change has resolved the issue, and the "Test on MNIST Images" feature now functions as intended, providing accurate ground-truth labels for model validation.
+
+## 6. Resolution Note: Fixing a TensorFlow.js Type Mismatch
+
+This note documents the resolution of a data loading failure caused by a subtle type incompatibility within the TensorFlow.js library.
+
+### The Previous Issue
+
+The application would fail during the data loading and shuffling phase with the error: `Argument 'indices' passed to 'gather' must be a Tensor or TensorLike, but got 'Uint32Array'`. This prevented the training and validation datasets from being prepared, halting the application.
+
+### Root Cause and Resolution
+
+The issue stemmed from an interaction between two TensorFlow.js functions:
+
+1.  `tf.util.createShuffledIndices()`: This utility function is used to generate a randomly ordered array of indices for shuffling the dataset. It returns a standard JavaScript `Uint32Array`.
+2.  `tf.gather()`: This core TensorFlow.js operation is used to reorder a tensor based on a given set of indices. Crucially, it requires its `indices` argument to be a `tf.Tensor` of type `int32`.
+
+The error occurred because the code was passing the raw `Uint32Array` from the utility function directly to `tf.gather()`, which cannot handle that specific JavaScript type.
+
+The fix, implemented in `services/mnistData.ts`, was to explicitly convert the shuffled indices array into the correct format before the `gather` operation. A new `Int32Array` is created from the `Uint32Array`, and then a `tf.tensor1d` of type `'int32'` is created from that. This ensures that `tf.gather` receives a tensor of the precise type it expects, resolving the error and allowing the data shuffling process to complete successfully.
+
+## 7. Resolution Note: Ensuring Robust Validation by Separating Test Data
+
+This note documents a critical improvement to the model training and validation process to guarantee that accuracy is measured on a truly independent dataset, eliminating any possibility of data leakage.
+
+### The Previous Method
+
+Previously, the application would partition the original 55,000-image MNIST training set into two smaller sets: a 45,000-image set for training and a 10,000-image set for validation. While these sets were disjoint, they were both drawn from the same master training pool. This is a common practice but can sometimes lead to overly optimistic validation scores if the training and validation splits happen to be very similar.
+
+### The Improved Method
+
+To provide a more rigorous and trustworthy measure of the model's ability to generalize, the data partitioning logic in `services/mnistData.ts` has been updated to follow a stricter separation of data:
+
+1.  **Training Set:** The model is now trained on the **entire 55,000-image official training set**.
+2.  **Validation Set:** The model's performance is now validated against the **entire 10,000-image official test set** at the end of each epoch.
+
+This change ensures that the validation accuracy reported during training is a true reflection of the model's performance on data it has never seen before, as the test set is collected and curated separately from the training set. This is the standard practice for academic benchmarks and provides the user with a much more reliable metric for comparing different model configurations. The interactive test panel in the UI also uses this same 10,000-image test set, providing consistency between the reported validation accuracy and the user's hands-on testing experience.
