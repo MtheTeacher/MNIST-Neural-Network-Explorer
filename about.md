@@ -1,4 +1,3 @@
-
 # About the MNIST Neural Network Explorer
 
 ## 1. Introduction
@@ -59,25 +58,17 @@ The **"Visualize Model"** button on a completed run opens a full-screen modal fo
 ### Step 6: Manage Your Model
 You can save a model you're happy with using the **"Save Model"** button in the testing panel. If a saved model exists, a new card will appear on the left, allowing you to **Load** it for testing or **Delete** it. You can also **Download** the model's files (`model.json` and `weights.bin`) for use in other TensorFlow.js projects.
 
-## 4. The Challenge of Handling MNIST Data
+## 4. How MNIST Data is Handled on the Web
 
-A significant technical hurdle in this project, and for anyone working with the raw MNIST dataset, is correctly downloading, parsing, and using the data files.
+A significant technical hurdle in this project is efficiently loading the large MNIST dataset (tens of thousands of images) into the browser. Simply including the image files in the application is not feasible, and downloading thousands of individual image files would be extremely slow.
 
-The MNIST data is not provided in a standard image format like JPEG or PNG. Instead, it's stored in a custom binary format called `.idx3-ubyte` for images and `.idx1-ubyte` for labels. These files are essentially compressed archives that must be carefully parsed.
+To solve this, this application uses a technique called **sprite sheeting**, which is common in graphics and game development. The entire dataset of 65,000 images (55,000 for training, 10,000 for testing) is combined into a single, large PNG image file called a sprite sheet. The labels for these images are stored in a separate, compact binary file.
 
-**The file structure consists of:**
-1.  **A Magic Number:** A 32-bit integer at the very beginning of the file that identifies its contents (e.g., `2051` for images, `2049` for labels).
-2.  **Metadata:** Additional 32-bit integers describing the data, such as the number of images, and their height and width.
-3.  **The Data:** A flat, contiguous block of all the pixel values (for images) or label values (for labels) for the entire dataset.
+The data loading process is handled by our `services/mnistData.ts` service, which performs the following steps:
+1.  **Fetches Data:** It simultaneously downloads the single image sprite sheet and the binary labels file from a highly available Google Cloud Storage bucket.
+2.  **Image Parsing:** Once the sprite sheet PNG is downloaded, it's drawn onto a hidden `<canvas>` element. This is a critical step that gives us raw pixel-level access to the image data.
+3.  **Pixel Extraction:** The service reads the pixel data from the canvas. Since the images are grayscale, it only needs one color channel (e.g., red) to get the value of each pixel. It iterates through the entire sprite sheet, extracting the 784 pixels (28x28) for each of the 65,000 digits.
+4.  **Label Parsing:** The compact binary file containing the 65,000 labels is read into an array.
+5.  **Tensor Creation:** The raw pixel and label data are then split into training and testing sets. Finally, this data is converted into the `tf.Tensor` objects that TensorFlow.js needs for training and evaluation.
 
-We have faced challenges in the past ensuring the correct and robust parsing of these binary files. The data is stored in a **big-endian** byte order, which requires specific handling when reading the multi-byte integers in the header. An error in reading these headers—or a misalignment when pairing an image from the image file with its corresponding label from the label file—can be catastrophic for the model. It would lead to the model being trained on a dataset where the labels are mismatched with the images (e.g., an image of a '5' being labeled as a '2'). This would make it impossible for the model to learn correctly and would invalidate any accuracy measurements.
-
-To solve this, we created the `services/mnistData.ts` service. This class acts as a singleton that encapsulates all the complex logic. It:
-- Fetches the raw binary `.ubyte` files.
-- Reads the headers using a `DataView` to correctly handle the big-endian byte format.
-- Validates the magic numbers to ensure the files are not corrupted.
-- Slices the raw byte buffers to separate the metadata from the pixel and label data.
-- Constructs perfectly aligned pairs of images and labels.
-- Finally, converts this data into the `tf.Tensor` objects that TensorFlow.js needs for training and evaluation.
-
-This robust data-loading pipeline is crucial for the integrity of the entire application, as it guarantees that the model is learning from and being tested on a clean, correctly-labeled dataset.
+This sprite sheet approach is highly efficient for web-based machine learning. It minimizes network requests and leverages the browser's powerful, native image decoding and canvas APIs to quickly prepare a large dataset for the model, ensuring the application starts up fast and runs smoothly.
