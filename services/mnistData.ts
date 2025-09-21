@@ -1,12 +1,25 @@
+
+
 import * as tf from '@tensorflow/tfjs';
 
 // Define multiple sources for the MNIST dataset to add resilience.
-// The sources are ordered by preference, starting with the most stable mirrors.
+// The sources are ordered by preference, starting with the most stable mirrors
+// as per the consultant's recommendation (see docs/DATA_SOURCES.md).
 const DATA_SOURCES = [
+    {
+        name: 'Hugging Face Hub (kwma/MNIST_as_sprite)',
+        images: 'https://huggingface.co/datasets/kwma/MNIST_as_sprite/resolve/main/mnist_images.png?download=true',
+        labels: 'https://huggingface.co/datasets/kwma/MNIST_as_sprite/resolve/main/mnist_labels_uint8?download=true'
+    },
     {
         name: 'TFJS Examples GCS (model-builder)',
         images: 'https://storage.googleapis.com/learnjs-data/model-builder/mnist_images.png',
         labels: 'https://storage.googleapis.com/learnjs-data/model-builder/mnist_labels_uint8'
+    },
+    {
+        name: 'TFJS Tutorials GCS',
+        images: 'https://storage.googleapis.com/tfjs-tutorials/mnist_images.png',
+        labels: 'https://storage.googleapis.com/tfjs-tutorials/mnist_labels_uint8'
     },
     {
         name: 'TFJS Examples GCS (common)',
@@ -14,21 +27,25 @@ const DATA_SOURCES = [
         labels: 'https://storage.googleapis.com/learnjs-data/common/mnist_labels_uint8'
     },
     {
-        name: 'jsDelivr CDN',
-        images: 'https://cdn.jsdelivr.net/gh/tensorflow/tfjs-examples-data@master/mnist/mnist_images.png',
-        labels: 'https://cdn.jsdelivr.net/gh/tensorflow/tfjs-examples-data@master/mnist/mnist_labels_uint8'
+        name: 'unpkg CDN',
+        images: 'https://unpkg.com/tfjs-examples-data@4.2.0/mnist/mnist_images.png',
+        labels: 'https://unpkg.com/tfjs-examples-data@4.2.0/mnist/mnist_labels_uint8'
     },
     {
-        name: 'GitHub Raw Content',
-        images: 'https://raw.githubusercontent.com/tensorflow/tfjs-examples/master/mnist-core/data/mnist_images.png',
-        labels: 'https://raw.githubusercontent.com/tensorflow/tfjs-examples/master/mnist-core/data/mnist_labels_uint8'
+        name: 'jsDelivr CDN',
+        images: 'https://cdn.jsdelivr.net/npm/tfjs-examples-data@4.2.0/mnist/mnist_images.png',
+        labels: 'https://cdn.jsdelivr.net/npm/tfjs-examples-data@4.2.0/mnist/mnist_labels_uint8'
     }
 ];
 
-// Dataset constants for this specific sprite version.
-const NUM_TRAIN_ELEMENTS = 55000;
-const NUM_TEST_ELEMENTS = 10000;
-const NUM_DATASET_ELEMENTS = NUM_TRAIN_ELEMENTS + NUM_TEST_ELEMENTS;
+// Constants for the full dataset stored in the sprite file.
+const FILE_NUM_TRAIN_ELEMENTS = 55000;
+const FILE_NUM_TEST_ELEMENTS = 10000;
+const FILE_NUM_DATASET_ELEMENTS = FILE_NUM_TRAIN_ELEMENTS + FILE_NUM_TEST_ELEMENTS;
+
+// Constants for splitting the training data into a training and validation set.
+const NUM_TRAIN_ELEMENTS = 45000;
+const NUM_VALIDATION_ELEMENTS = 10000;
 
 const IMAGE_WIDTH = 28;
 const IMAGE_HEIGHT = 28;
@@ -43,16 +60,13 @@ export class MnistData {
     private static instance: MnistData;
 
     private trainImages: tf.Tensor | null = null;
-    private testImages: tf.Tensor | null = null;
     private trainLabels: tf.Tensor | null = null;
-    private testLabels: tf.Tensor | null = null;
+    private validationImages: tf.Tensor | null = null;
+    private validationLabels: tf.Tensor | null = null;
     
     private testImageSamples: tf.Tensor[] = [];
     private testLabelSamples: number[] = [];
     
-    private numTrainElements: number = NUM_TRAIN_ELEMENTS;
-    private numTestElements: number = NUM_TEST_ELEMENTS;
-
     private constructor() {}
 
     public static async getInstance(): Promise<MnistData> {
@@ -106,7 +120,7 @@ export class MnistData {
                 
                 // The sprite is grayscale, so R, G, and B channels are identical. We only need one.
                 // Normalize the pixel values from [0, 255] to [0, 1].
-                const datasetBytes = new Float32Array(NUM_DATASET_ELEMENTS * IMAGE_SIZE);
+                const datasetBytes = new Float32Array(FILE_NUM_DATASET_ELEMENTS * IMAGE_SIZE);
                 for (let i = 0; i < datasetBytesBuffer.length / 4; i++) {
                     datasetBytes[i] = datasetBytesBuffer[i * 4] / 255;
                 }
@@ -114,8 +128,8 @@ export class MnistData {
                 // The labels file is one-hot encoded. We need to decode it for the UI
                 // and use it directly for the tensors.
                 const labelsUint8 = new Uint8Array(labelsBuffer);
-                const labelIndices = new Uint8Array(NUM_DATASET_ELEMENTS);
-                for (let i = 0; i < NUM_DATASET_ELEMENTS; i++) {
+                const labelIndices = new Uint8Array(FILE_NUM_DATASET_ELEMENTS);
+                for (let i = 0; i < FILE_NUM_DATASET_ELEMENTS; i++) {
                     const offset = i * NUM_CLASSES;
                     for (let j = 0; j < NUM_CLASSES; j++) {
                         if (labelsUint8[offset + j] === 1) {
@@ -129,30 +143,38 @@ export class MnistData {
                 // Use tf.tidy to automatically dispose intermediate tensors, but use
                 // tf.keep to prevent the final dataset tensors from being disposed.
                 tf.tidy(() => {
-                    const datasetImages = tf.tensor2d(datasetBytes, [NUM_DATASET_ELEMENTS, IMAGE_SIZE]);
-                    const datasetLabels = tf.tensor2d(labelsUint8, [NUM_DATASET_ELEMENTS, NUM_CLASSES]);
+                    const datasetImages = tf.tensor2d(datasetBytes, [FILE_NUM_DATASET_ELEMENTS, IMAGE_SIZE]);
+                    const datasetLabels = tf.tensor2d(labelsUint8, [FILE_NUM_DATASET_ELEMENTS, NUM_CLASSES]);
                     
-                    this.trainImages = tf.keep(datasetImages.slice([0, 0], [NUM_TRAIN_ELEMENTS, IMAGE_SIZE]));
-                    this.testImages = tf.keep(datasetImages.slice([NUM_TRAIN_ELEMENTS, 0], [NUM_TEST_ELEMENTS, IMAGE_SIZE]));
+                    // Get the full 55,000 training images and shuffle them.
+                    const fullTrainImages = datasetImages.slice([0, 0], [FILE_NUM_TRAIN_ELEMENTS, IMAGE_SIZE]);
+                    const fullTrainLabels = datasetLabels.slice([0, 0], [FILE_NUM_TRAIN_ELEMENTS, NUM_CLASSES]);
                     
-                    this.trainLabels = tf.keep(datasetLabels.slice([0, 0], [NUM_TRAIN_ELEMENTS, NUM_CLASSES]));
-                    this.testLabels = tf.keep(datasetLabels.slice([NUM_TRAIN_ELEMENTS, 0], [NUM_TEST_ELEMENTS, NUM_CLASSES]));
+                    const shuffledIndices = tf.util.createShuffledIndices(FILE_NUM_TRAIN_ELEMENTS);
+                    const shuffledTrainImages = fullTrainImages.gather(shuffledIndices);
+                    const shuffledTrainLabels = fullTrainLabels.gather(shuffledIndices);
                     
-                    // Split test images for the inference tester.
-                    const testImageSamplesTensors = tf.split(this.testImages, NUM_TEST_ELEMENTS);
-                    // Keep each tensor in the split array.
-                    testImageSamplesTensors.forEach(t => tf.keep(t));
-                    this.testImageSamples = testImageSamplesTensors;
+                    // Split the shuffled training data into a new training set and a validation set.
+                    this.trainImages = tf.keep(shuffledTrainImages.slice([0, 0], [NUM_TRAIN_ELEMENTS, IMAGE_SIZE]));
+                    this.trainLabels = tf.keep(shuffledTrainLabels.slice([0, 0], [NUM_TRAIN_ELEMENTS, NUM_CLASSES]));
+                    
+                    this.validationImages = tf.keep(shuffledTrainImages.slice([NUM_TRAIN_ELEMENTS, 0], [NUM_VALIDATION_ELEMENTS, IMAGE_SIZE]));
+                    this.validationLabels = tf.keep(shuffledTrainLabels.slice([NUM_TRAIN_ELEMENTS, 0], [NUM_VALIDATION_ELEMENTS, NUM_CLASSES]));
+
+                    // The full 10,000 image test set remains pristine for the inference UI.
+                    const fullTestImages = datasetImages.slice([FILE_NUM_TRAIN_ELEMENTS, 0], [FILE_NUM_TEST_ELEMENTS, IMAGE_SIZE]);
+                    this.testImageSamples = tf.split(fullTestImages, FILE_NUM_TEST_ELEMENTS).map(t => tf.keep(t));
                 });
 
                 // Store the decoded integer test labels for the inference tester drag-and-drop UI.
                 this.testLabelSamples = Array.from(
-                    labelIndices.slice(NUM_TRAIN_ELEMENTS, NUM_DATASET_ELEMENTS)
+                    labelIndices.slice(FILE_NUM_TRAIN_ELEMENTS, FILE_NUM_DATASET_ELEMENTS)
                 );
                 
                 console.log(`Successfully loaded MNIST data from ${source.name}.`);
-                console.log(`- Training samples: ${this.numTrainElements}`);
-                console.log(`- Test samples: ${this.numTestElements}`);
+                console.log(`- Training samples: ${NUM_TRAIN_ELEMENTS}`);
+                console.log(`- Validation samples: ${NUM_VALIDATION_ELEMENTS}`);
+                console.log(`- Test samples (for UI): ${FILE_NUM_TEST_ELEMENTS}`);
 
                 // If we got this far, the data is loaded. Exit the method.
                 return;
@@ -178,11 +200,11 @@ export class MnistData {
         return { images: this.trainImages, labels: this.trainLabels };
     }
 
-    getTestData() {
-        if (!this.testImages || !this.testLabels) {
+    getValidationData() {
+        if (!this.validationImages || !this.validationLabels) {
             throw new Error("Data not loaded yet. Call `await MnistData.getInstance()` first.");
         }
-        return { images: this.testImages, labels: this.testLabels };
+        return { images: this.validationImages, labels: this.validationLabels };
     }
     
     getTestSamplesForInference(numSamples: number) {

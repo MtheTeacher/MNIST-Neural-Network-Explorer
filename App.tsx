@@ -1,3 +1,4 @@
+
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import type * as tf from '@tensorflow/tfjs';
 import { TrainingConfigurator } from './components/TrainingConfigurator';
@@ -67,7 +68,7 @@ const App: React.FC = () => {
             setTrainingStatus('Loading MNIST dataset...');
             const data = await MnistData.getInstance();
             const { images: trainImages, labels: trainLabels } = data.getTrainData();
-            const { images: testImages, labels: testLabels } = data.getTestData();
+            const { images: testImages, labels: testLabels } = data.getValidationData();
             
             setTrainingStatus('Starting training...');
             await trainModel(

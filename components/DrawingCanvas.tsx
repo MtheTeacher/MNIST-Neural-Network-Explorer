@@ -92,17 +92,16 @@ export const DrawingCanvas = forwardRef<DrawingCanvasRef>((props, ref) => {
         const canvas = canvasRef.current;
         if (!ctx || !canvas) return null;
 
-        // Find the bounding box of the drawn digit to remove whitespace.
         const imageData = ctx.getImageData(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
         const { data, width, height } = imageData;
 
         let minX = width, minY = height, maxX = -1, maxY = -1;
         let isBlank = true;
 
-        // Iterate through pixels to find the bounds of the drawing
+        // FIX: Iterate through pixels checking the red channel (data[i]) for white ink.
+        // The alpha channel is always 255 due to the black background fill.
         for (let i = 0; i < data.length; i += 4) {
-            // Check the alpha channel; a non-zero value means something was drawn.
-            if (data[i + 3] > 0) { 
+            if (data[i] > 0) { // Check the red channel for non-black pixels.
                 isBlank = false;
                 const x = (i / 4) % width;
                 const y = Math.floor((i / 4) / width);
@@ -113,11 +112,9 @@ export const DrawingCanvas = forwardRef<DrawingCanvasRef>((props, ref) => {
             }
         }
 
-        // If the canvas is blank, return null.
         if (isBlank) return null;
 
-        // Add some padding to the bounding box
-        const padding = LINE_WIDTH * 1.5; // Add slightly more padding
+        const padding = LINE_WIDTH * 1.5;
         minX = Math.max(0, minX - padding);
         minY = Math.max(0, minY - padding);
         maxX = Math.min(width, maxX + padding);
@@ -126,20 +123,29 @@ export const DrawingCanvas = forwardRef<DrawingCanvasRef>((props, ref) => {
         const digitWidth = maxX - minX;
         const digitHeight = maxY - minY;
 
-        // Create a temporary 28x28 canvas to scale down the image
+        // Create an intermediate canvas to apply a blur, softening the image.
+        const processingCanvas = document.createElement('canvas');
+        processingCanvas.width = digitWidth;
+        processingCanvas.height = digitHeight;
+        const processingCtx = processingCanvas.getContext('2d');
+        if (!processingCtx) return null;
+
+        // Apply a Gaussian blur to soften the sharp lines to better match MNIST data.
+        processingCtx.filter = 'blur(3px)';
+        // Draw the cropped digit onto the processing canvas to apply the blur.
+        processingCtx.drawImage(canvas, minX, minY, digitWidth, digitHeight, 0, 0, digitWidth, digitHeight);
+
+        // Create the final 28x28 canvas for scaling.
         const tempCanvas = document.createElement('canvas');
         tempCanvas.width = 28;
         tempCanvas.height = 28;
         const tempCtx = tempCanvas.getContext('2d', { willReadFrequently: true });
         if (!tempCtx) return null;
         
-        // Fill the temporary canvas with black. This will be the background (value 0).
         tempCtx.fillStyle = "black";
-        tempCtx.fillRect(0,0,28,28);
+        tempCtx.fillRect(0, 0, 28, 28);
 
-        // Calculate the scaling factor and position to center the digit.
-        // We want to fit the digit inside a 20x20 box within the 28x28 canvas,
-        // which mimics the MNIST data format.
+        // Calculate scaling to fit the digit into a 20x20 box, mimicking MNIST format.
         const longestSide = Math.max(digitWidth, digitHeight);
         const scale = 20 / longestSide;
         
@@ -148,21 +154,18 @@ export const DrawingCanvas = forwardRef<DrawingCanvasRef>((props, ref) => {
         const dx = (28 - scaledWidth) / 2;
         const dy = (28 - scaledHeight) / 2;
         
-        // Draw the cropped, scaled-down digit (which is white) onto the black background.
-        tempCtx.drawImage(canvas, minX, minY, digitWidth, digitHeight, dx, dy, scaledWidth, scaledHeight);
+        // Draw the blurred, cropped image from the processing canvas onto the final 28x28 canvas.
+        tempCtx.drawImage(processingCanvas, 0, 0, digitWidth, digitHeight, dx, dy, scaledWidth, scaledHeight);
         
-        // Get the pixel data from the 28x28 canvas.
         const tensorImageData = tempCtx.getImageData(0, 0, 28, 28);
         const tensorData = new Float32Array(28 * 28);
         
         // Convert the RGBA data to a grayscale float array.
-        // Since we drew white on black, the R, G, and B channels are all the same.
-        // We can just use the red channel. This results in digit pixels being ~1.0 and background 0.0.
+        // The blurred image will have grayscale values, which we capture from the red channel.
         for (let i = 0; i < tensorImageData.data.length / 4; i++) {
             tensorData[i] = tensorImageData.data[i * 4] / 255.0;
         }
         
-        // Create the final tensor in the shape the model expects [1, 784].
         return tf.tensor2d(tensorData, [1, 784]);
     };
 

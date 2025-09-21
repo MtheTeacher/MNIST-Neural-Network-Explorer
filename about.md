@@ -65,7 +65,7 @@ A significant technical hurdle in this project is efficiently loading the large 
 To solve this, this application uses a technique called **sprite sheeting**, which is common in graphics and game development. The entire dataset of 65,000 images (55,000 for training, 10,000 for testing) is combined into a single, large PNG image file called a sprite sheet. The labels for these images are stored in a separate, compact binary file.
 
 The data loading process is handled by our `services/mnistData.ts` service, which performs the following steps:
-1.  **Fetches Data:** It simultaneously downloads the single image sprite sheet and the binary labels file from a highly available Google Cloud Storage bucket.
+1.  **Fetches Data:** To ensure reliability, it attempts to download the single image sprite sheet and the binary labels file from a list of proven, highly-available sources, starting with the official Google Cloud Storage bucket used by the TensorFlow.js team. If the primary source fails, it automatically tries several backup mirrors.
 2.  **Image Parsing:** Once the sprite sheet PNG is downloaded, it's drawn onto a hidden `<canvas>` element. This is a critical step that gives us raw pixel-level access to the image data.
 3.  **Pixel Extraction:** The service reads the pixel data from the canvas. Since the images are grayscale, it only needs one color channel (e.g., red) to get the value of each pixel. It iterates through the entire sprite sheet, extracting the 784 pixels (28x28) for each of the 65,000 digits.
 4.  **Label Parsing:** The compact binary file containing the 65,000 labels is read into an array.
