@@ -59,10 +59,16 @@ export class MnistData {
 
         this.datasetLabels = new Uint8Array(await (labelsResponse as Response).arrayBuffer());
 
+        // Slice the images
         this.trainImages = tf.tensor2d(this.datasetImages.slice(0, IMAGE_SIZE * NUM_TRAIN_ELEMENTS), [NUM_TRAIN_ELEMENTS, IMAGE_SIZE]);
         this.testImages = tf.tensor2d(this.datasetImages.slice(IMAGE_SIZE * NUM_TRAIN_ELEMENTS), [NUM_TEST_ELEMENTS, IMAGE_SIZE]);
-        this.trainLabels = tf.oneHot(tf.tensor1d(this.datasetLabels.slice(0, NUM_CLASSES * NUM_TRAIN_ELEMENTS), 'int32').slice([0], [NUM_TRAIN_ELEMENTS]), NUM_CLASSES);
-        this.testLabels = tf.oneHot(tf.tensor1d(this.datasetLabels.slice(NUM_CLASSES * NUM_TRAIN_ELEMENTS), 'int32').slice([0], [NUM_TEST_ELEMENTS]), NUM_CLASSES);
+
+        // Slice the labels correctly
+        const trainLabelsArray = this.datasetLabels.slice(0, NUM_TRAIN_ELEMENTS);
+        const testLabelsArray = this.datasetLabels.slice(NUM_TRAIN_ELEMENTS, NUM_DATASET_ELEMENTS);
+        
+        this.trainLabels = tf.oneHot(tf.tensor1d(trainLabelsArray, 'int32'), NUM_CLASSES);
+        this.testLabels = tf.oneHot(tf.tensor1d(testLabelsArray, 'int32'), NUM_CLASSES);
     }
 
     getTrainData() {

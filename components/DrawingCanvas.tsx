@@ -30,15 +30,17 @@ export const DrawingCanvas = forwardRef<DrawingCanvasRef>((props, ref) => {
         const canvas = canvasRef.current;
         if (!canvas) return null;
         const rect = canvas.getBoundingClientRect();
-        if ('touches' in e) {
-            return {
-                x: e.touches[0].clientX - rect.left,
-                y: e.touches[0].clientY - rect.top,
-            };
-        }
+        
+        const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
+        const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
+
+        // Scale coordinates from display size to canvas internal resolution
+        const scaleX = canvas.width / rect.width;
+        const scaleY = canvas.height / rect.height;
+
         return {
-            x: e.clientX - rect.left,
-            y: e.clientY - rect.top,
+            x: (clientX - rect.left) * scaleX,
+            y: (clientY - rect.top) * scaleY,
         };
     };
 
@@ -90,14 +92,17 @@ export const DrawingCanvas = forwardRef<DrawingCanvasRef>((props, ref) => {
         const canvas = canvasRef.current;
         if (!ctx || !canvas) return null;
 
+        // Find the bounding box of the drawn digit to remove whitespace.
         const imageData = ctx.getImageData(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
         const { data, width, height } = imageData;
 
         let minX = width, minY = height, maxX = -1, maxY = -1;
         let isBlank = true;
 
+        // Iterate through pixels to find the bounds of the drawing
         for (let i = 0; i < data.length; i += 4) {
-            if (data[i] > 0) { // Check red channel for white pixel
+            // Check the alpha channel; a non-zero value means something was drawn.
+            if (data[i + 3] > 0) { 
                 isBlank = false;
                 const x = (i / 4) % width;
                 const y = Math.floor((i / 4) / width);
@@ -108,10 +113,11 @@ export const DrawingCanvas = forwardRef<DrawingCanvasRef>((props, ref) => {
             }
         }
 
+        // If the canvas is blank, return null.
         if (isBlank) return null;
 
-        // Add padding to bounding box
-        const padding = LINE_WIDTH;
+        // Add some padding to the bounding box
+        const padding = LINE_WIDTH * 1.5; // Add slightly more padding
         minX = Math.max(0, minX - padding);
         minY = Math.max(0, minY - padding);
         maxX = Math.min(width, maxX + padding);
@@ -120,29 +126,43 @@ export const DrawingCanvas = forwardRef<DrawingCanvasRef>((props, ref) => {
         const digitWidth = maxX - minX;
         const digitHeight = maxY - minY;
 
+        // Create a temporary 28x28 canvas to scale down the image
         const tempCanvas = document.createElement('canvas');
         tempCanvas.width = 28;
         tempCanvas.height = 28;
-        const tempCtx = tempCanvas.getContext('2d');
+        const tempCtx = tempCanvas.getContext('2d', { willReadFrequently: true });
         if (!tempCtx) return null;
         
+        // Fill the temporary canvas with black. This will be the background (value 0).
         tempCtx.fillStyle = "black";
         tempCtx.fillRect(0,0,28,28);
 
-        const scale = Math.min(20 / digitWidth, 20 / digitHeight);
+        // Calculate the scaling factor and position to center the digit.
+        // We want to fit the digit inside a 20x20 box within the 28x28 canvas,
+        // which mimics the MNIST data format.
+        const longestSide = Math.max(digitWidth, digitHeight);
+        const scale = 20 / longestSide;
+        
         const scaledWidth = digitWidth * scale;
         const scaledHeight = digitHeight * scale;
         const dx = (28 - scaledWidth) / 2;
         const dy = (28 - scaledHeight) / 2;
-
+        
+        // Draw the cropped, scaled-down digit (which is white) onto the black background.
         tempCtx.drawImage(canvas, minX, minY, digitWidth, digitHeight, dx, dy, scaledWidth, scaledHeight);
         
+        // Get the pixel data from the 28x28 canvas.
         const tensorImageData = tempCtx.getImageData(0, 0, 28, 28);
         const tensorData = new Float32Array(28 * 28);
+        
+        // Convert the RGBA data to a grayscale float array.
+        // Since we drew white on black, the R, G, and B channels are all the same.
+        // We can just use the red channel. This results in digit pixels being ~1.0 and background 0.0.
         for (let i = 0; i < tensorImageData.data.length / 4; i++) {
-            tensorData[i] = tensorImageData.data[i * 4] / 255.0; // Use red channel
+            tensorData[i] = tensorImageData.data[i * 4] / 255.0;
         }
         
+        // Create the final tensor in the shape the model expects [1, 784].
         return tf.tensor2d(tensorData, [1, 784]);
     };
 

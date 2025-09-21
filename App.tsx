@@ -4,10 +4,10 @@ import { TrainingConfigurator } from './components/TrainingConfigurator';
 import { TrainingDashboard } from './components/TrainingDashboard';
 import { InferenceTester } from './components/InferenceTester';
 import { Header } from './components/Header';
-import { createModel, trainModel, saveModel, loadModel, checkForSavedModel, deleteSavedModel } from './services/modelService';
+import { createModel, trainModel, saveModel, loadModel, checkForSavedModel, deleteSavedModel, downloadModel } from './services/modelService';
 import { MnistData } from './services/mnistData';
 import type { ModelConfig, TrainingLog } from './types';
-import { BrainCircuitIcon, PlayIcon, RocketIcon, SaveIcon, FolderDownIcon, TrashIcon } from './constants';
+import { BrainCircuitIcon, PlayIcon, RocketIcon, SaveIcon, FolderDownIcon, TrashIcon, DownloadIcon } from './constants';
 
 const App: React.FC = () => {
     const [config, setConfig] = useState<ModelConfig>({
@@ -100,6 +100,18 @@ const App: React.FC = () => {
         } catch (error) {
             console.error('Failed to save model:', error);
             setTrainingStatus(`Error saving model: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        }
+    }, [model]);
+
+    const handleDownloadModel = useCallback(async () => {
+        if (!model) return;
+        setTrainingStatus('Preparing model for download...');
+        try {
+            await downloadModel(model);
+            setTrainingStatus('Model download started!');
+        } catch (error) {
+            console.error('Failed to download model:', error);
+            setTrainingStatus(`Error downloading model: ${error instanceof Error ? error.message : 'Unknown error'}`);
         }
     }, [model]);
 
@@ -207,13 +219,22 @@ const App: React.FC = () => {
                                    <p className="text-gray-300">Draw digits on the canvases below to see your model in action.</p>
                                  </div>
                                </div>
-                               <button 
-                                   onClick={handleSaveModel}
-                                   className="w-full sm:w-auto bg-gradient-to-r from-violet-500 to-fuchsia-500 hover:from-violet-400 hover:to-fuchsia-400 text-white font-bold py-2 px-6 rounded-full flex items-center justify-center space-x-2 transition-all duration-300 transform hover:scale-105"
-                               >
-                                   <SaveIcon className="w-5 h-5" />
-                                   <span>Save Model</span>
-                               </button>
+                               <div className="flex flex-col sm:flex-row gap-3">
+                                <button 
+                                    onClick={handleSaveModel}
+                                    className="w-full sm:w-auto bg-gradient-to-r from-violet-500 to-fuchsia-500 hover:from-violet-400 hover:to-fuchsia-400 text-white font-bold py-2 px-6 rounded-full flex items-center justify-center space-x-2 transition-all duration-300 transform hover:scale-105"
+                                >
+                                    <SaveIcon className="w-5 h-5" />
+                                    <span>Save Model</span>
+                                </button>
+                                <button 
+                                    onClick={handleDownloadModel}
+                                    className="w-full sm:w-auto bg-gradient-to-r from-blue-500 to-teal-500 hover:from-blue-400 hover:to-teal-400 text-white font-bold py-2 px-6 rounded-full flex items-center justify-center space-x-2 transition-all duration-300 transform hover:scale-105"
+                                >
+                                    <DownloadIcon className="w-5 h-5" />
+                                    <span>Download Model</span>
+                                </button>
+                               </div>
                              </div>
                              <InferenceTester model={model} />
                            </div>

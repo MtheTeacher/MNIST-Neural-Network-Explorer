@@ -19,6 +19,7 @@ export const InferenceTester: React.FC<InferenceTesterProps> = ({ model }) => {
         setIsProcessing(true);
         const tensorsAndIndices: { tensor: tf.Tensor; index: number }[] = [];
 
+        // Collect all valid tensors from the drawing canvases
         canvasRefs.current.forEach((ref, index) => {
             const tensor = ref.current?.getTensor();
             if (tensor) {
@@ -27,10 +28,17 @@ export const InferenceTester: React.FC<InferenceTesterProps> = ({ model }) => {
         });
 
         if (tensorsAndIndices.length > 0) {
-            const batch = tf.stack(tensorsAndIndices.map(item => item.tensor.reshape([1, 28, 28, 1])));
+            // Each tensor from getTensor() is shape [1, 784].
+            // We need to combine them into a single batch tensor of shape [num_tensors, 784].
+            // tf.concat is the correct operation for this.
+            const tensorsToBatch = tensorsAndIndices.map(item => item.tensor);
+            const batch = tf.concat(tensorsToBatch, 0); // Concatenate along axis 0
+            
+            // Now, `batch` has the correct 2D shape that both the dense and CNN models expect.
             const predictionsTensor = model.predict(batch) as tf.Tensor;
             const predictionsArray = await predictionsTensor.argMax(-1).data();
 
+            // Update the state with the new predictions
             const newPredictions = [...predictions];
             predictionsArray.forEach((pred, i) => {
                 const originalIndex = tensorsAndIndices[i].index;
@@ -38,7 +46,8 @@ export const InferenceTester: React.FC<InferenceTesterProps> = ({ model }) => {
             });
             setPredictions(newPredictions);
             
-            tf.dispose([batch, predictionsTensor, ...tensorsAndIndices.map(item => item.tensor)]);
+            // Clean up all created tensors to prevent memory leaks
+            tf.dispose([batch, predictionsTensor, ...tensorsToBatch]);
         }
         
         setIsProcessing(false);
@@ -73,11 +82,10 @@ export const InferenceTester: React.FC<InferenceTesterProps> = ({ model }) => {
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
                 {Array.from({ length: 10 }).map((_, i) => (
                     <div key={i} className="flex flex-col items-center text-center space-y-2">
-                        <p className="font-bold text-lg text-gray-300">Draw a "{i}"</p>
                         <DrawingCanvas ref={canvasRefs.current[i]} />
                         <div className="h-12 flex items-center justify-center">
                             {predictions[i] !== null && (
-                                 <p className={`text-4xl font-bold bg-clip-text text-transparent ${predictions[i] === i ? 'bg-gradient-to-r from-green-400 to-emerald-500' : 'bg-gradient-to-r from-red-500 to-pink-500'}`}>
+                                 <p className="text-4xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 to-blue-500">
                                      {predictions[i]}
                                  </p>
                             )}

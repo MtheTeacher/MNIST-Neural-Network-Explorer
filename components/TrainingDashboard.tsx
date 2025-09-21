@@ -13,6 +13,33 @@ interface TrainingDashboardProps {
 export const TrainingDashboard: React.FC<TrainingDashboardProps> = ({ trainingLog, isTraining, status, epochs }) => {
     const progress = trainingLog.length > 0 ? (trainingLog[trainingLog.length - 1].epoch / epochs) * 100 : 0;
     
+    // Calculate a dynamic domain for the accuracy chart to improve resolution
+    const getAccuracyDomain = (): [number, number] => {
+        if (trainingLog.length < 2) {
+            return [0, 1]; // Default domain when there's not enough data
+        }
+
+        const accuracies = trainingLog.map(log => log.accuracy);
+        const minAcc = Math.min(...accuracies);
+        const maxAcc = Math.max(...accuracies);
+        const padding = 0.02;
+
+        let lowerBound = minAcc - padding;
+        let upperBound = maxAcc + padding;
+        
+        // Ensure a minimum visible range to avoid zooming in too much on a flat line
+        if (upperBound - lowerBound < 0.1) {
+            const mid = (upperBound + lowerBound) / 2;
+            lowerBound = mid - 0.05;
+            upperBound = mid + 0.05;
+        }
+
+        // Clamp the final values to stay within the valid [0, 1] range
+        return [Math.max(0, lowerBound), Math.min(1, upperBound)];
+    };
+    
+    const accuracyDomain = getAccuracyDomain();
+
     return (
         <div className="bg-white/10 border border-white/20 rounded-2xl p-6 shadow-2xl">
             <h2 className="text-2xl font-bold text-white mb-4">2. Training Progress</h2>
@@ -52,7 +79,11 @@ export const TrainingDashboard: React.FC<TrainingDashboardProps> = ({ trainingLo
                         <LineChart data={trainingLog} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
                             <CartesianGrid strokeDasharray="3 3" stroke="rgba(255, 255, 255, 0.2)" />
                             <XAxis dataKey="epoch" stroke="rgba(255, 255, 255, 0.7)" />
-                            <YAxis stroke="rgba(255, 255, 255, 0.7)" domain={[0, 1]} />
+                            <YAxis 
+                                stroke="rgba(255, 255, 255, 0.7)" 
+                                domain={accuracyDomain}
+                                tickFormatter={(value) => `${(value * 100).toFixed(0)}%`}
+                             />
                             <Tooltip
                                 contentStyle={{
                                     backgroundColor: 'rgba(30, 41, 59, 0.8)',

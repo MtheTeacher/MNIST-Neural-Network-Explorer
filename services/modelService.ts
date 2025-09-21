@@ -2,6 +2,7 @@ import * as tf from '@tensorflow/tfjs';
 import type { ModelConfig } from '../types';
 
 const MODEL_STORAGE_KEY = 'localstorage://mnist-model';
+const MODEL_DOWNLOAD_KEY = 'downloads://mnist-model';
 
 export function createModel(config: ModelConfig): tf.Sequential {
     const model = tf.sequential();
@@ -91,6 +92,10 @@ export async function trainModel(
 
 export async function saveModel(model: tf.Sequential): Promise<void> {
     await model.save(MODEL_STORAGE_KEY);
+}
+
+export async function downloadModel(model: tf.Sequential): Promise<void> {
+    await model.save(MODEL_DOWNLOAD_KEY);
 }
 
 export async function loadModel(): Promise<tf.Sequential> {
