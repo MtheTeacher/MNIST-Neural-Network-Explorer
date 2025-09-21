@@ -8,6 +8,8 @@ import { NetworkActivationDiagram } from './NetworkActivationDiagram';
 import { MnistData } from '../services/mnistData';
 import type { MnistSample } from '../types';
 import { MnistCanvas } from './MnistCanvas';
+import { NetworkGraphVisualizer } from './NetworkGraphVisualizer';
+import { LayerActivationHeatmaps } from './LayerActivationHeatmaps';
 
 
 interface ModelVisualizerProps {
@@ -19,6 +21,8 @@ export interface Activation {
     data: Float32Array;
     shape: number[];
 }
+
+type PanelName = 'weights' | 'activations' | 'graph' | 'activation-heatmaps';
 
 const LayerCard: React.FC<{ layer: tf.layers.Layer, index: number }> = ({ layer, index }) => {
     const weights = layer.getWeights();
@@ -94,9 +98,9 @@ const LayerCard: React.FC<{ layer: tf.layers.Layer, index: number }> = ({ layer,
 
 const AccordionItem: React.FC<{
     title: string;
-    name: 'weights' | 'activations';
-    activePanel: string | null;
-    setActivePanel: (name: 'weights' | 'activations' | null) => void;
+    name: PanelName;
+    activePanel: PanelName | null;
+    setActivePanel: (name: PanelName | null) => void;
     children: React.ReactNode;
 }> = ({ title, name, activePanel, setActivePanel, children }) => {
     const isOpen = activePanel === name;
@@ -121,7 +125,7 @@ const AccordionItem: React.FC<{
 
 
 export const ModelVisualizer: React.FC<ModelVisualizerProps> = ({ model, onClose }) => {
-    const [activePanel, setActivePanel] = useState<'weights' | 'activations' | null>('activations');
+    const [activePanel, setActivePanel] = useState<PanelName | null>('activation-heatmaps');
     const [activations, setActivations] = useState<Activation[]>([]);
     const [highlightedLayer, setHighlightedLayer] = useState<number | null>(null);
     const [isVisualizing, setIsVisualizing] = useState(false);
@@ -138,7 +142,7 @@ export const ModelVisualizer: React.FC<ModelVisualizerProps> = ({ model, onClose
                 console.error("Failed to load MNIST samples for visualizer:", error);
             }
         };
-        if (activePanel === 'activations') {
+        if (activePanel === 'activations' || activePanel === 'activation-heatmaps') {
              loadSamples();
         }
     }, [activePanel]);
@@ -176,7 +180,7 @@ export const ModelVisualizer: React.FC<ModelVisualizerProps> = ({ model, onClose
                 });
             }
 
-            // Now, start the animation loop to reveal them one by one
+            // Now, start the animation loop to reveal them one by one for the side view
             setActivations([allActivations[0]]); // Set the input layer first
             setHighlightedLayer(0);
 
@@ -196,6 +200,8 @@ export const ModelVisualizer: React.FC<ModelVisualizerProps> = ({ model, onClose
             // Stop highlighting after the animation is complete
             setHighlightedLayer(null);
             setIsVisualizing(false);
+            // Set the full activations for the heatmap view at the end
+            setActivations(allActivations);
         }
     }, [model, selectedSample]);
 
@@ -227,7 +233,8 @@ export const ModelVisualizer: React.FC<ModelVisualizerProps> = ({ model, onClose
                 <AccordionItem title="Layer Weight Heatmaps" name="weights" activePanel={activePanel} setActivePanel={setActivePanel}>
                     {model.layers.map((layer, i) => <LayerCard key={layer.name + i} layer={layer} index={i} />)}
                 </AccordionItem>
-                <AccordionItem title="Live Activation Viewer" name="activations" activePanel={activePanel} setActivePanel={setActivePanel}>
+
+                <AccordionItem title="Layer Activation Heatmaps" name="activation-heatmaps" activePanel={activePanel} setActivePanel={setActivePanel}>
                     <div className="flex flex-col lg:flex-row gap-8">
                         <div className="lg:w-1/3 space-y-4">
                             <h3 className="text-lg font-semibold">1. Provide Input</h3>
@@ -272,7 +279,61 @@ export const ModelVisualizer: React.FC<ModelVisualizerProps> = ({ model, onClose
                              </div>
                         </div>
                         <div className="lg:w-2/3">
-                             <h3 className="text-lg font-semibold mb-4">2. Activation Propagation</h3>
+                             <h3 className="text-lg font-semibold mb-4">2. Layer Activations (Top-Down View)</h3>
+                             <LayerActivationHeatmaps model={model} activations={activations} />
+                        </div>
+                    </div>
+                </AccordionItem>
+
+                 <AccordionItem title="Network Connection Graph" name="graph" activePanel={activePanel} setActivePanel={setActivePanel}>
+                    <NetworkGraphVisualizer model={model} />
+                </AccordionItem>
+                <AccordionItem title="Live Activation Viewer (Side View)" name="activations" activePanel={activePanel} setActivePanel={setActivePanel}>
+                    <div className="flex flex-col lg:flex-row gap-8">
+                        <div className="lg:w-1/3 space-y-4">
+                            <h3 className="text-lg font-semibold">1. Provide Input</h3>
+                            <p className="text-sm text-gray-400">Draw a digit, or select a sample image below.</p>
+                             <DrawingCanvas ref={canvasRef} onDrawStart={() => setSelectedSample(null)} />
+                             
+                             {mnistSamples.length > 0 && (
+                                <div className="space-y-2">
+                                    <h4 className="text-md font-semibold text-gray-300">Sample MNIST Images</h4>
+                                    <div className="grid grid-cols-6 gap-2 p-2 bg-black/20 rounded-lg border border-white/10">
+                                        {mnistSamples.map(sample => (
+                                            <div
+                                                key={sample.id}
+                                                onClick={() => handleSelectSample(sample)}
+                                                className={`cursor-pointer rounded-md p-1 transition-all duration-200 ${selectedSample?.id === sample.id ? 'bg-cyan-500 ring-2 ring-cyan-300' : 'hover:bg-white/20'}`}
+                                                title={`Digit: ${sample.label}`}
+                                            >
+                                                <MnistCanvas tensor={sample.tensor} size={40} />
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                             <div className="space-y-2 pt-2">
+                                <button
+                                    onClick={handleVisualizeActivations}
+                                    disabled={isVisualizing}
+                                    className="w-full bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-400 hover:to-blue-400 text-white font-bold py-2 px-4 rounded-full flex items-center justify-center space-x-2 transition-all duration-300 transform hover:scale-105 disabled:opacity-50 disabled:cursor-wait"
+                                >
+                                    <SparklesIcon className="w-5 h-5"/>
+                                    <span>{isVisualizing ? 'Visualizing...' : 'See Activation Flow'}</span>
+                                </button>
+                                <button
+                                    onClick={handleClear}
+                                    disabled={isVisualizing}
+                                    className="w-full bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded-full flex items-center justify-center space-x-2 transition-all duration-300"
+                                >
+                                    <EraserIcon className="w-5 h-5"/>
+                                    <span>Clear</span>
+                                </button>
+                             </div>
+                        </div>
+                        <div className="lg:w-2/3">
+                             <h3 className="text-lg font-semibold mb-4">2. Activation Propagation (Side View)</h3>
                              <div className="bg-black/20 p-4 rounded-lg border border-white/20 min-h-[300px]">
                                 <NetworkActivationDiagram 
                                     model={model} 
