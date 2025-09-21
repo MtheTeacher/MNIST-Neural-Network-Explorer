@@ -1,9 +1,13 @@
-import React, { useState, useRef, useCallback } from 'react';
+
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import * as tf from '@tensorflow/tfjs';
 import { XIcon, ChevronDownIcon, SparklesIcon, EraserIcon } from '../constants';
 import { WeightHeatmap } from './WeightHeatmap';
 import { DrawingCanvas, type DrawingCanvasRef } from './DrawingCanvas';
 import { NetworkActivationDiagram } from './NetworkActivationDiagram';
+import { MnistData } from '../services/mnistData';
+import type { MnistSample } from '../types';
+import { MnistCanvas } from './MnistCanvas';
 
 
 interface ModelVisualizerProps {
@@ -117,20 +121,38 @@ const AccordionItem: React.FC<{
 
 
 export const ModelVisualizer: React.FC<ModelVisualizerProps> = ({ model, onClose }) => {
-    const [activePanel, setActivePanel] = useState<'weights' | 'activations' | null>('weights');
+    const [activePanel, setActivePanel] = useState<'weights' | 'activations' | null>('activations');
     const [activations, setActivations] = useState<Activation[]>([]);
     const [highlightedLayer, setHighlightedLayer] = useState<number | null>(null);
     const [isVisualizing, setIsVisualizing] = useState(false);
     const canvasRef = useRef<DrawingCanvasRef>(null);
+    const [mnistSamples, setMnistSamples] = useState<MnistSample[]>([]);
+    const [selectedSample, setSelectedSample] = useState<MnistSample | null>(null);
+
+    useEffect(() => {
+        const loadSamples = async () => {
+            try {
+                const data = await MnistData.getInstance();
+                setMnistSamples(data.getTestSamplesForInference(12));
+            } catch (error) {
+                console.error("Failed to load MNIST samples for visualizer:", error);
+            }
+        };
+        if (activePanel === 'activations') {
+             loadSamples();
+        }
+    }, [activePanel]);
 
     const handleVisualizeActivations = useCallback(async () => {
         setIsVisualizing(true);
         setActivations([]);
+        setHighlightedLayer(null);
         
         const cleanupTensors: tf.Tensor[] = [];
+        let allActivations: Activation[] = [];
 
         try {
-            const inputTensor = canvasRef.current?.getTensor();
+            const inputTensor = selectedSample ? selectedSample.tensor.clone() : canvasRef.current?.getTensor();
             if (!inputTensor) {
                 setIsVisualizing(false);
                 return;
@@ -138,43 +160,54 @@ export const ModelVisualizer: React.FC<ModelVisualizerProps> = ({ model, onClose
             cleanupTensors.push(inputTensor);
 
             const outputs = model.layers.map(layer => layer.output);
-            // Fix: tf.tidy is for tensors, not models. Models are JS objects that don't need disposal.
             const intermediateModels = outputs.map(output => 
                 tf.model({ inputs: model.inputs, outputs: output as tf.SymbolicTensor })
             );
-            // Fix: Do not push models to the tensor cleanup array. This was causing a type error
-            // and is conceptually incorrect.
             
-            const newActivations: Activation[] = [];
-            // Add input tensor as the first "activation"
-            newActivations.push({ data: await inputTensor.data() as Float32Array, shape: inputTensor.shape });
+            // First, compute all activations without updating the state
+            allActivations.push({ data: await inputTensor.data() as Float32Array, shape: inputTensor.shape });
 
-            // Fix: The loop variable 'intermediateModels' is now correctly typed as tf.LayersModel[]
             for (const intermediateModel of intermediateModels) {
                 const activationTensor = intermediateModel.predict(inputTensor) as tf.Tensor;
                 cleanupTensors.push(activationTensor);
-                newActivations.push({
+                allActivations.push({
                     data: await activationTensor.data() as Float32Array,
                     shape: activationTensor.shape
                 });
             }
-            setActivations(newActivations);
 
-            for (let i = 0; i < newActivations.length; i++) {
+            // Now, start the animation loop to reveal them one by one
+            setActivations([allActivations[0]]); // Set the input layer first
+            setHighlightedLayer(0);
+
+            for (let i = 1; i < allActivations.length; i++) {
+                // Slower delay (400ms) for better visualization
+                await new Promise(res => setTimeout(res, 400));
                 setHighlightedLayer(i);
-                await new Promise(res => setTimeout(res, 150));
+                // Add the next layer's activation to the state to trigger a re-render
+                setActivations(prev => [...prev, allActivations[i]]);
             }
 
-        } catch (error) {
+        } catch (error)
+         {
             console.error("Error during activation visualization:", error);
         } finally {
             tf.dispose(cleanupTensors);
+            // Stop highlighting after the animation is complete
             setHighlightedLayer(null);
             setIsVisualizing(false);
         }
-    }, [model]);
+    }, [model, selectedSample]);
 
     const handleClear = () => {
+        canvasRef.current?.clearCanvas();
+        setActivations([]);
+        setHighlightedLayer(null);
+        setSelectedSample(null);
+    };
+
+    const handleSelectSample = (sample: MnistSample) => {
+        setSelectedSample(sample);
         canvasRef.current?.clearCanvas();
         setActivations([]);
         setHighlightedLayer(null);
@@ -196,10 +229,30 @@ export const ModelVisualizer: React.FC<ModelVisualizerProps> = ({ model, onClose
                 </AccordionItem>
                 <AccordionItem title="Live Activation Viewer" name="activations" activePanel={activePanel} setActivePanel={setActivePanel}>
                     <div className="flex flex-col lg:flex-row gap-8">
-                        <div className="lg:w-1/4 space-y-4">
-                            <h3 className="text-lg font-semibold">1. Draw a Digit</h3>
-                             <DrawingCanvas ref={canvasRef} />
-                             <div className="space-y-2">
+                        <div className="lg:w-1/3 space-y-4">
+                            <h3 className="text-lg font-semibold">1. Provide Input</h3>
+                            <p className="text-sm text-gray-400">Draw a digit, or select a sample image below.</p>
+                             <DrawingCanvas ref={canvasRef} onDrawStart={() => setSelectedSample(null)} />
+                             
+                             {mnistSamples.length > 0 && (
+                                <div className="space-y-2">
+                                    <h4 className="text-md font-semibold text-gray-300">Sample MNIST Images</h4>
+                                    <div className="grid grid-cols-6 gap-2 p-2 bg-black/20 rounded-lg border border-white/10">
+                                        {mnistSamples.map(sample => (
+                                            <div
+                                                key={sample.id}
+                                                onClick={() => handleSelectSample(sample)}
+                                                className={`cursor-pointer rounded-md p-1 transition-all duration-200 ${selectedSample?.id === sample.id ? 'bg-cyan-500 ring-2 ring-cyan-300' : 'hover:bg-white/20'}`}
+                                                title={`Digit: ${sample.label}`}
+                                            >
+                                                <MnistCanvas tensor={sample.tensor} size={40} />
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                             <div className="space-y-2 pt-2">
                                 <button
                                     onClick={handleVisualizeActivations}
                                     disabled={isVisualizing}
@@ -218,7 +271,7 @@ export const ModelVisualizer: React.FC<ModelVisualizerProps> = ({ model, onClose
                                 </button>
                              </div>
                         </div>
-                        <div className="lg:w-3/4">
+                        <div className="lg:w-2/3">
                              <h3 className="text-lg font-semibold mb-4">2. Activation Propagation</h3>
                              <div className="bg-black/20 p-4 rounded-lg border border-white/20 min-h-[300px]">
                                 <NetworkActivationDiagram 

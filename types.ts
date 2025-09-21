@@ -36,3 +36,9 @@ export interface TrainingLog {
     accuracy: number;
     lr?: number;
 }
+
+export interface MnistSample {
+    tensor: tf.Tensor; // Shape [1, 784]
+    label: number;
+    id: number; // index in the original test set
+}

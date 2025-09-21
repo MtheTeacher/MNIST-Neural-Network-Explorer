@@ -128,3 +128,19 @@ To provide a more rigorous and trustworthy measure of the model's ability to gen
 2.  **Validation Set:** The model's performance is now validated against the **entire 10,000-image official test set** at the end of each epoch.
 
 This change ensures that the validation accuracy reported during training is a true reflection of the model's performance on data it has never seen before, as the test set is collected and curated separately from the training set. This is the standard practice for academic benchmarks and provides the user with a much more reliable metric for comparing different model configurations. The interactive test panel in the UI also uses this same 10,000-image test set, providing consistency between the reported validation accuracy and the user's hands-on testing experience.
+
+## 8. Resolution Note: Improving Drawn Digit Pre-Processing
+
+This note details an enhancement to the image processing pipeline for user-drawn digits to improve model accuracy.
+
+### The Issue
+
+While the model performed well on images from the official MNIST test set, its accuracy was inconsistent on digits drawn by users in the "Test Your Model" interface. This indicated a mismatch between the pre-processing of user-drawn digits and the characteristics of the original MNIST dataset the model was trained on.
+
+### Root Cause and Resolution
+
+The investigation focused on the image processing steps in `components/DrawingCanvas.tsx`. The original MNIST digits are not sharp; they have a degree of blurriness and anti-aliasing from the original scanning and down-sampling process. The application's image processing must replicate this quality to ensure the model receives input that looks like its training data.
+
+An earlier version of the app used a `3px` Gaussian blur, which was found to be too aggressive, washing out important features. The blur was then removed entirely, relying only on the browser's scaling algorithm for smoothing. However, this produced images that were too sharp compared to the training data.
+
+The fix was to **re-introduce a more subtle `2px` Gaussian blur**. This value strikes a balance, softening the hard edges of the user's drawing without destroying key features like corners and endpoints. This blur is applied to the 28x28 scaled-down image before it is centered and fed to the model. This change ensures the input from the drawing canvas more closely matches the "fuzziness" of the MNIST training set, leading to more reliable and accurate predictions.
