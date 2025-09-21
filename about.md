@@ -72,3 +72,27 @@ The data loading process is handled by our `services/mnistData.ts` service, whic
 5.  **Tensor Creation:** The raw pixel and label data are then split into training and testing sets. Finally, this data is converted into the `tf.Tensor` objects that TensorFlow.js needs for training and evaluation.
 
 This sprite sheet approach is highly efficient for web-based machine learning. It minimizes network requests and leverages the browser's powerful, native image decoding and canvas APIs to quickly prepare a large dataset for the model, ensuring the application starts up fast and runs smoothly.
+
+## 5. A Known Issue: Incorrect "Actual" Labels in MNIST Test Mode
+
+We are currently investigating a frustrating bug within the "Test Your Model" panel and would appreciate any insights from the community.
+
+### The Intended Behavior
+
+The "Test on MNIST Images" mode is designed to be a crucial validation step. A user should be able to drag any digit image from the gallery and drop it into one of the ten test slots. After clicking "Predict All Digits," the UI should display the model's prediction alongside the true, ground-truth label of that image. For example, if the user drags an image of a "7", the interface should show something like "Prediction: 7 (Actual: 7)". This allows for a direct and accurate assessment of the model's performance on unseen data.
+
+### The Problem
+
+Currently, the feature is not working as intended. While the model provides a prediction, the ground-truth label displayed for any dragged image is **always "Actual: 0"**. This is incorrect and misleading, as it prevents users from knowing if their model's predictions are right or wrong for any digit other than zero.
+
+### Our Working Theories
+
+We have a few theories as to why this might be happening, primarily centered around how the data is being loaded and processed.
+
+1.  **Primary Theory: Label File Header Issue.** Our leading hypothesis is that there's an error in how we parse the binary file containing the MNIST labels (`mnist_labels_uint8`). Many raw data files, including this one, contain a metadata "header" at the beginning of the file that needs to be skipped. Our current data loading logic in `services/mnistData.ts` reads the file from the very first byte. If a header exists, we are misinterpreting that metadata as label data. When we later slice the data array to get the 10,000 test labels, we could be pointing to a section of the buffer that is either part of the header or an incorrect offset, which happens to contain zero values.
+
+2.  **Secondary Theory: Incorrect Data Slicing.** It's also possible that the logic for splitting the full 65,000-item dataset into the 55,000 training examples and 10,000 test examples is flawed. An "off-by-one" error or an incorrect starting index for the slice that extracts the test labels could cause us to read the wrong data segment.
+
+3.  **Less Likely Theory: State Management Bug.** While less probable, there could be an issue in the React component (`InferenceTester.tsx`) itself. The logic that transfers the image's metadata (including its true label) during the drag-and-drop operation, or the state update that follows, might be losing or corrupting the label information. However, the consistency of the bug (always displaying "0") strongly suggests a more fundamental, systemic issue with the source data rather than a flaw in the UI logic.
+
+We are actively working to resolve this issue and any help or suggestions would be greatly appreciated.
