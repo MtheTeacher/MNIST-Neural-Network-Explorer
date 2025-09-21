@@ -2,7 +2,7 @@ import React from 'react';
 import type { TrainingLog, ModelConfig } from '../types';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { LEARNING_RATE_SCHEDULES } from '../constants';
-import { RocketIcon } from '../constants';
+import { RocketIcon, EyeIcon } from '../constants';
 
 interface TrainingDashboardProps {
     trainingLog: TrainingLog[];
@@ -10,18 +10,19 @@ interface TrainingDashboardProps {
     status: string;
     config: ModelConfig;
     onTestModel?: () => void;
+    onVisualizeModel?: () => void;
     isModelInTest?: boolean;
 }
 
 const getScheduleName = (id: string) => LEARNING_RATE_SCHEDULES.find(s => s.id === id)?.name || 'Unknown';
 
-export const TrainingDashboard: React.FC<TrainingDashboardProps> = ({ trainingLog, isLive, status, config, onTestModel, isModelInTest }) => {
+export const TrainingDashboard: React.FC<TrainingDashboardProps> = ({ trainingLog, isLive, status, config, onTestModel, onVisualizeModel, isModelInTest }) => {
     const progress = trainingLog.length > 0 ? (trainingLog[trainingLog.length - 1].epoch / config.epochs) * 100 : (isLive ? 0 : 100);
     const finalAccuracy = !isLive && trainingLog.length > 0 ? trainingLog[trainingLog.length - 1].accuracy : null;
 
     return (
         <div className={`bg-white/10 border rounded-2xl p-6 shadow-2xl transition-all duration-300 ${isLive ? 'border-cyan-400/50' : 'border-white/20'}`}>
-            <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-2 mb-4">
+            <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 mb-4">
                 <div>
                     <h2 className="text-xl font-bold text-white">{isLive ? "Live Training" : "Completed Run"}</h2>
                     <div className="text-xs text-gray-300 flex flex-wrap gap-x-3 gap-y-1 mt-1">
@@ -31,14 +32,27 @@ export const TrainingDashboard: React.FC<TrainingDashboardProps> = ({ trainingLo
                         <span>Epochs: <span className="font-semibold text-gray-200">{config.epochs}</span></span>
                     </div>
                 </div>
-                {!isLive && onTestModel && (
-                     <button
-                        onClick={onTestModel}
-                        className={`font-bold py-2 px-4 rounded-full flex items-center justify-center space-x-2 transition-all duration-300 transform hover:scale-105 text-sm ${isModelInTest ? 'bg-pink-500 text-white' : 'bg-white/20 hover:bg-white/30 text-white'}`}
-                    >
-                        <RocketIcon className="w-4 h-4"/>
-                        <span>{isModelInTest ? 'Currently Testing' : 'Test This Model'}</span>
-                    </button>
+                {!isLive && (onTestModel || onVisualizeModel) && (
+                     <div className="flex flex-col sm:flex-row gap-2">
+                        {onTestModel && (
+                            <button
+                                onClick={onTestModel}
+                                className={`font-bold py-2 px-4 rounded-full flex items-center justify-center space-x-2 transition-all duration-300 transform hover:scale-105 text-sm ${isModelInTest ? 'bg-pink-500 text-white' : 'bg-white/20 hover:bg-white/30 text-white'}`}
+                            >
+                                <RocketIcon className="w-4 h-4"/>
+                                <span>{isModelInTest ? 'Currently Testing' : 'Test This Model'}</span>
+                            </button>
+                        )}
+                        {onVisualizeModel && (
+                             <button
+                                onClick={onVisualizeModel}
+                                className="font-bold py-2 px-4 rounded-full flex items-center justify-center space-x-2 transition-all duration-300 transform hover:scale-105 text-sm bg-white/20 hover:bg-white/30 text-white"
+                            >
+                                <EyeIcon className="w-4 h-4"/>
+                                <span>Visualize Model</span>
+                            </button>
+                        )}
+                    </div>
                 )}
             </div>
 
