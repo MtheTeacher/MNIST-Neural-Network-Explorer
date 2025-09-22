@@ -1,3 +1,4 @@
+
 import type * as tf from '@tensorflow/tfjs';
 
 export interface LayerConfig {
@@ -34,6 +35,8 @@ export interface TrainingLog {
     epoch: number;
     loss: number;
     accuracy: number;
+    val_loss?: number;
+    val_accuracy?: number;
     lr?: number;
 }
 
@@ -41,4 +44,18 @@ export interface MnistSample {
     tensor: tf.Tensor; // Shape [1, 784]
     label: number;
     id: number; // index in the original test set
+}
+
+export interface LayerCalc {
+    name: string;
+    type: string;
+    outputShape: string;
+    params: number;
+    calculation: string;
+}
+
+export interface ModelInfo {
+    name: string;
+    totalParams: number;
+    layerCalcs: LayerCalc[];
 }

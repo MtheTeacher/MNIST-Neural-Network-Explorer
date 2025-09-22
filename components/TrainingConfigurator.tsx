@@ -1,6 +1,7 @@
+
 import React from 'react';
 import type { ModelConfig, LayerConfig } from '../types';
-import { PlayIcon, StopIcon, PlusIcon, XIcon, LayersIcon } from '../constants';
+import { PlayIcon, StopIcon, PlusIcon, XIcon, LayersIcon, InfoIcon } from '../constants';
 import { LEARNING_RATE_SCHEDULES } from '../constants';
 import { LRScheduleVisualizer } from './LRScheduleVisualizer';
 
@@ -10,11 +11,20 @@ interface TrainingConfiguratorProps {
     onStartTraining: () => void;
     onStopTraining: () => void;
     isTraining: boolean;
+    onShowInfo: (topic: string) => void;
 }
+
+const InfoButton: React.FC<{onClick: () => void; className?: string}> = ({ onClick, className }) => (
+    <button onClick={onClick} className={`ml-2 text-gray-400 hover:text-cyan-300 transition-colors ${className}`} aria-label="More information">
+        <InfoIcon className="w-4 h-4" />
+    </button>
+);
 
 const Label: React.FC<{htmlFor: string, children: React.ReactNode, tooltip: string}> = ({htmlFor, children, tooltip}) => (
     <label htmlFor={htmlFor} className="block text-sm font-medium text-gray-300 mb-1 group relative">
-        {children}
+        <div className="flex items-center">
+            {children}
+        </div>
         <span className="absolute left-0 bottom-full mb-2 w-max max-w-xs bg-gray-800 text-white text-xs rounded py-1 px-2 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none shadow-lg z-10">
             {tooltip}
         </span>
@@ -22,7 +32,7 @@ const Label: React.FC<{htmlFor: string, children: React.ReactNode, tooltip: stri
 );
 
 
-export const TrainingConfigurator: React.FC<TrainingConfiguratorProps> = ({ config, setConfig, onStartTraining, onStopTraining, isTraining }) => {
+export const TrainingConfigurator: React.FC<TrainingConfiguratorProps> = ({ config, setConfig, onStartTraining, onStopTraining, isTraining, onShowInfo }) => {
 
     const updateLayer = (index: number, key: keyof LayerConfig, value: string | number) => {
         const newLayers = [...config.layers];
@@ -86,7 +96,10 @@ export const TrainingConfigurator: React.FC<TrainingConfiguratorProps> = ({ conf
             
              {/* Architecture Presets */}
             <div>
-                <Label htmlFor="presets" tooltip="Quickly load common neural network architectures.">Architecture Presets</Label>
+                <Label htmlFor="presets" tooltip="Quickly load common neural network architectures.">
+                    <span>Architecture Presets</span>
+                    <InfoButton onClick={() => onShowInfo('architecture')} />
+                </Label>
                 <div className="grid grid-cols-2 gap-2 mt-2">
                     <button onClick={() => applyPreset('simple')} className="bg-cyan-500/20 text-cyan-300 hover:bg-cyan-500/40 font-semibold py-2 px-2 rounded-lg transition duration-300 text-sm">Simple</button>
                     <button onClick={() => applyPreset('deep')} className="bg-cyan-500/20 text-cyan-300 hover:bg-cyan-500/40 font-semibold py-2 px-2 rounded-lg transition duration-300 text-sm">Deep</button>
@@ -103,6 +116,7 @@ export const TrainingConfigurator: React.FC<TrainingConfiguratorProps> = ({ conf
                             <LayersIcon className="w-4 h-4"/>
                             <span>Hidden Layers</span>
                         </span>
+                        <InfoButton onClick={() => onShowInfo('layers')} />
                     </Label>
                     <div className="space-y-3 mt-2">
                         {config.layers.map((layer, index) => (
@@ -156,7 +170,10 @@ export const TrainingConfigurator: React.FC<TrainingConfiguratorProps> = ({ conf
             {/* Hyperparameters */}
             <div className="space-y-4">
                 <div>
-                    <Label htmlFor="lrSchedule" tooltip="Determines how the learning rate changes during training.">Learning Rate Schedule</Label>
+                    <Label htmlFor="lrSchedule" tooltip="Determines how the learning rate changes during training.">
+                        <span>Learning Rate Schedule</span>
+                        <InfoButton onClick={() => onShowInfo('lr')} />
+                    </Label>
                     <select
                         id="lrSchedule"
                         value={config.lrSchedule}
@@ -190,7 +207,10 @@ export const TrainingConfigurator: React.FC<TrainingConfiguratorProps> = ({ conf
             
             <div className="grid grid-cols-2 gap-4">
                 <div>
-                    <Label htmlFor="epochs" tooltip="One epoch is one full pass through the entire training dataset.">Epochs</Label>
+                    <Label htmlFor="epochs" tooltip="One epoch is one full pass through the entire training dataset.">
+                        <span>Epochs</span>
+                        <InfoButton onClick={() => onShowInfo('epochs-batch')} />
+                    </Label>
                     <input
                         id="epochs"
                         type="number"
@@ -202,7 +222,10 @@ export const TrainingConfigurator: React.FC<TrainingConfiguratorProps> = ({ conf
                     />
                 </div>
                 <div>
-                    <Label htmlFor="batchSize" tooltip="The number of training examples utilized in one iteration.">Batch Size</Label>
+                    <Label htmlFor="batchSize" tooltip="The number of training examples utilized in one iteration.">
+                        <span>Batch Size</span>
+                        <InfoButton onClick={() => onShowInfo('epochs-batch')} />
+                    </Label>
                     <input
                         id="batchSize"
                         type="number"

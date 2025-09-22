@@ -1,14 +1,16 @@
+
 import React from 'react';
-import type { TrainingLog, ModelConfig } from '../types';
+import type { TrainingLog, ModelConfig, ModelInfo } from '../types';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { LEARNING_RATE_SCHEDULES } from '../constants';
-import { RocketIcon, EyeIcon } from '../constants';
+import { RocketIcon, EyeIcon, InfoIcon, ChevronDownIcon } from '../constants';
 
 interface TrainingDashboardProps {
     trainingLog: TrainingLog[];
     isLive: boolean;
     status: string;
     config: ModelConfig;
+    modelInfo: ModelInfo | null;
     onTestModel?: () => void;
     onVisualizeModel?: () => void;
     isModelInTest?: boolean;
@@ -16,20 +18,25 @@ interface TrainingDashboardProps {
 
 const getScheduleName = (id: string) => LEARNING_RATE_SCHEDULES.find(s => s.id === id)?.name || 'Unknown';
 
-export const TrainingDashboard: React.FC<TrainingDashboardProps> = ({ trainingLog, isLive, status, config, onTestModel, onVisualizeModel, isModelInTest }) => {
+export const TrainingDashboard: React.FC<TrainingDashboardProps> = ({ trainingLog, isLive, status, config, modelInfo, onTestModel, onVisualizeModel, isModelInTest }) => {
     const progress = trainingLog.length > 0 ? (trainingLog[trainingLog.length - 1].epoch / config.epochs) * 100 : (isLive ? 0 : 100);
-    const finalAccuracy = !isLive && trainingLog.length > 0 ? trainingLog[trainingLog.length - 1].accuracy : null;
+    
+    const lastLog = !isLive && trainingLog.length > 0 ? trainingLog[trainingLog.length - 1] : null;
+    const finalAccuracy = lastLog ? (lastLog.val_accuracy ?? lastLog.accuracy) : null;
+    const hasValidationData = lastLog && lastLog.val_accuracy !== undefined;
+
 
     return (
         <div className={`bg-white/10 border rounded-2xl p-6 shadow-2xl transition-all duration-300 ${isLive ? 'border-cyan-400/50' : 'border-white/20'}`}>
             <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 mb-4">
                 <div>
-                    <h2 className="text-xl font-bold text-white">{isLive ? "Live Training" : "Completed Run"}</h2>
+                    <h2 className="text-xl font-bold text-white">{modelInfo?.name || (isLive ? "Live Training" : "Completed Run")}</h2>
                     <div className="text-xs text-gray-300 flex flex-wrap gap-x-3 gap-y-1 mt-1">
                         <span>Arch: <span className="font-semibold text-gray-200">{config.architecture.toUpperCase()}</span></span>
                         <span>LR Schedule: <span className="font-semibold text-gray-200">{getScheduleName(config.lrSchedule)}</span></span>
                         <span>Initial LR: <span className="font-semibold text-gray-200">{config.learningRate}</span></span>
                         <span>Epochs: <span className="font-semibold text-gray-200">{config.epochs}</span></span>
+                        {modelInfo && <span>Params: <span className="font-semibold text-gray-200">{modelInfo.totalParams.toLocaleString()}</span></span>}
                     </div>
                 </div>
                 {!isLive && (onTestModel || onVisualizeModel) && (
@@ -66,20 +73,62 @@ export const TrainingDashboard: React.FC<TrainingDashboardProps> = ({ trainingLo
                 </div>
             </div>}
             
-            {!isLive && finalAccuracy && (
+            {!isLive && finalAccuracy !== null && (
                 <div className="mb-4 text-center bg-black/20 p-2 rounded-lg">
-                    <span className="text-lg font-semibold text-gray-200">Final Accuracy: </span>
+                    <span className="text-lg font-semibold text-gray-200">{hasValidationData ? 'Final Validation Accuracy' : 'Final Accuracy'}: </span>
                     <span className="text-lg font-bold text-cyan-300">{(finalAccuracy * 100).toFixed(2)}%</span>
                 </div>
+            )}
+
+            {modelInfo && (
+                <details className="mb-6 bg-black/20 rounded-lg border border-white/10 group">
+                    <summary className="p-3 flex justify-between items-center cursor-pointer list-none text-gray-300 hover:text-white">
+                        <span className="font-semibold flex items-center space-x-2">
+                            <InfoIcon className="w-4 h-4" />
+                            <span>Model Architecture & Parameters</span>
+                        </span>
+                        <ChevronDownIcon className="w-5 h-5 transition-transform transform group-open:rotate-180" />
+                    </summary>
+                    <div className="p-4 border-t border-white/10">
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-left text-sm">
+                                <thead className="text-xs text-gray-400 uppercase">
+                                    <tr>
+                                        <th className="py-2 px-3">Layer (Type)</th>
+                                        <th className="py-2 px-3">Output Shape</th>
+                                        <th className="py-2 px-3">Param #</th>
+                                        <th className="py-2 px-3">Calculation</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-700">
+                                    {modelInfo.layerCalcs.map((layer, index) => (
+                                        <tr key={index}>
+                                            <td className="py-2 px-3 font-mono">{layer.name} ({layer.type})</td>
+                                            <td className="py-2 px-3 font-mono">{layer.outputShape}</td>
+                                            <td className="py-2 px-3 font-mono">{layer.params.toLocaleString()}</td>
+                                            <td className="py-2 px-3 text-gray-400 text-xs">{layer.calculation}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                                <tfoot>
+                                    <tr className="font-bold border-t-2 border-white/20">
+                                        <td colSpan={2} className="py-2 px-3 text-right">Total Parameters</td>
+                                        <td className="py-2 px-3 font-mono">{modelInfo.totalParams.toLocaleString()}</td>
+                                        <td></td>
+                                    </tr>
+                                </tfoot>
+                            </table>
+                        </div>
+                    </div>
+                </details>
             )}
 
 
             <div className="flex flex-col gap-8">
                 <div className="bg-black/20 p-4 rounded-xl">
-                    <h3 className="text-lg font-semibold text-gray-200 mb-4 text-center">Loss & Learning Rate</h3>
+                    <h3 className="text-lg font-semibold text-gray-200 mb-4 text-center">Performance vs. Learning Rate</h3>
                     <ResponsiveContainer width="100%" height={350}>
-                        {/* Fix: isAnimationActive is not a prop of LineChart. Moved to Line components. */}
-                        <LineChart data={trainingLog} margin={{ top: 5, right: 5, left: -15, bottom: 5 }}>
+                        <LineChart data={trainingLog} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
                             <CartesianGrid strokeDasharray="3 3" stroke="rgba(255, 255, 255, 0.2)" />
                             <XAxis 
                                 dataKey="epoch" 
@@ -89,8 +138,8 @@ export const TrainingDashboard: React.FC<TrainingDashboardProps> = ({ trainingLo
                                 domain={[1, config.epochs]}
                                 allowDataOverflow={true}
                             />
-                            <YAxis yAxisId="left" stroke="#f472b6" domain={['auto', 'auto']} />
-                            <YAxis yAxisId="right" orientation="right" stroke="#8884d8" tickFormatter={(val) => val.toExponential(1)} domain={['auto', 'auto']} />
+                            <YAxis yAxisId="left" stroke="rgba(255, 255, 255, 0.7)" domain={[0, 0.55]} allowDataOverflow={true} />
+                            <YAxis yAxisId="right" orientation="right" stroke="rgba(255, 255, 255, 0.7)" tickFormatter={(val) => val.toExponential(1)} domain={[0, config.learningRate * 1.1]} allowDataOverflow={true} />
                             <Tooltip
                                 contentStyle={{
                                     backgroundColor: 'rgba(30, 41, 59, 0.8)',
@@ -98,15 +147,15 @@ export const TrainingDashboard: React.FC<TrainingDashboardProps> = ({ trainingLo
                                 }}
                             />
                             <Legend />
-                            <Line yAxisId="left" type="monotone" dataKey="loss" stroke="#f472b6" strokeWidth={4} dot={false} activeDot={{ r: 6 }} name="Loss" isAnimationActive={false}/>
-                            <Line yAxisId="right" type="monotone" dataKey="lr" stroke="#8884d8" strokeWidth={4} dot={false} activeDot={{ r: 6 }} name="LR" isAnimationActive={false} />
+                            <Line yAxisId="left" type="monotone" dataKey="loss" stroke="#f472b6" strokeWidth={2} dot={false} name="Training Loss" isAnimationActive={false}/>
+                            <Line yAxisId="left" type="monotone" dataKey="val_loss" stroke="#f97316" strokeWidth={2} dot={false} name="Validation Loss" isAnimationActive={false} connectNulls />
+                            <Line yAxisId="right" type="monotone" dataKey="lr" stroke="#8884d8" strokeWidth={2} dot={false} name="Learning Rate" isAnimationActive={false} />
                         </LineChart>
                     </ResponsiveContainer>
                 </div>
                 <div className="bg-black/20 p-4 rounded-xl">
                     <h3 className="text-lg font-semibold text-gray-200 mb-4 text-center">Accuracy</h3>
                     <ResponsiveContainer width="100%" height={350}>
-                        {/* Fix: isAnimationActive is not a prop of LineChart. Moved to Line component. */}
                         <LineChart data={trainingLog} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
                             <CartesianGrid strokeDasharray="3 3" stroke="rgba(255, 255, 255, 0.2)" />
                             <XAxis 
@@ -119,7 +168,8 @@ export const TrainingDashboard: React.FC<TrainingDashboardProps> = ({ trainingLo
                             <YAxis 
                                 stroke="rgba(255, 255, 255, 0.7)" 
                                 tickFormatter={(value) => `${(value * 100).toFixed(0)}%`}
-                                domain={['auto', 'auto']}
+                                domain={[0.65, 1]}
+                                allowDataOverflow={true}
                              />
                             <Tooltip
                                 contentStyle={{
@@ -129,7 +179,8 @@ export const TrainingDashboard: React.FC<TrainingDashboardProps> = ({ trainingLo
                                 formatter={(value: number) => `${(value * 100).toFixed(2)}%`}
                             />
                             <Legend />
-                            <Line type="monotone" dataKey="accuracy" stroke="#22d3ee" strokeWidth={4} dot={false} activeDot={{ r: 6 }} isAnimationActive={false} />
+                            <Line type="monotone" dataKey="accuracy" stroke="#22d3ee" strokeWidth={2} dot={false} name="Training Accuracy" isAnimationActive={false} />
+                            <Line type="monotone" dataKey="val_accuracy" stroke="#4ade80" strokeWidth={2} dot={false} name="Validation Accuracy" isAnimationActive={false} connectNulls />
                         </LineChart>
                     </ResponsiveContainer>
                 </div>

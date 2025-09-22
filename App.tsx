@@ -6,17 +6,25 @@ import { TrainingDashboard } from './components/TrainingDashboard';
 import { InferenceTester } from './components/InferenceTester';
 import { Header } from './components/Header';
 import { ModelVisualizer } from './components/ModelVisualizer';
-import { AboutModal } from './components/AboutModal';
+import { InfoModal } from './components/InfoModal';
 import { createModel, trainModel, saveModel, loadModel, checkForSavedModel, deleteSavedModel, downloadModel } from './services/modelService';
 import { MnistData } from './services/mnistData';
-import type { ModelConfig, TrainingLog } from './types';
+import type { ModelConfig, TrainingLog, ModelInfo } from './types';
 import { BrainCircuitIcon, PlayIcon, RocketIcon, SaveIcon, FolderDownIcon, TrashIcon, DownloadIcon, XIcon } from './constants';
+import { analyzeModel } from './services/modelAnalysisService';
+// Info Modal Content
+import { AboutInfo } from './components/info-content/AboutInfo';
+import { ArchitectureInfo } from './components/info-content/ArchitectureInfo';
+import { LayersInfo } from './components/info-content/LayersInfo';
+import { LearningRateInfo } from './components/info-content/LearningRateInfo';
+import { EpochsBatchSizeInfo } from './components/info-content/EpochsBatchSizeInfo';
 
 interface TrainingRun {
     id: number;
     config: ModelConfig;
     log: TrainingLog[];
     model: tf.Sequential | null;
+    modelInfo: ModelInfo | null;
 }
 
 const MAX_COMPLETED_RUNS = 3;
@@ -37,7 +45,8 @@ const App: React.FC = () => {
     const [trainingStatus, setTrainingStatus] = useState('Ready to train.');
     const [savedModelExists, setSavedModelExists] = useState(false);
     const [completedRuns, setCompletedRuns] = useState<TrainingRun[]>([]);
-    const [showAbout, setShowAbout] = useState(false);
+    const [activeInfoModal, setActiveInfoModal] = useState<string | null>(null);
+    const [currentModelInfo, setCurrentModelInfo] = useState<ModelInfo | null>(null);
     const stopTrainingRef = useRef(false);
 
     useEffect(() => {
@@ -62,10 +71,14 @@ const App: React.FC = () => {
         
         const currentRunLog: TrainingLog[] = [];
         let newModel: tf.Sequential | null = null;
+        let modelInfo: ModelInfo | null = null;
 
         try {
             newModel = createModel(config);
             newModel.summary();
+
+            modelInfo = analyzeModel(newModel, config);
+            setCurrentModelInfo(modelInfo);
 
             setTrainingStatus('Loading MNIST dataset...');
             const data = await MnistData.getInstance();
@@ -84,7 +97,14 @@ const App: React.FC = () => {
                     if (stopTrainingRef.current && newModel) {
                         newModel.stopTraining = true;
                     }
-                    const newLogEntry: TrainingLog = { epoch: epoch + 1, loss: logs.loss, accuracy: logs.acc, lr };
+                    const newLogEntry: TrainingLog = {
+                        epoch: epoch + 1,
+                        loss: logs.loss,
+                        accuracy: logs.acc,
+                        val_loss: logs.val_loss,
+                        val_accuracy: logs.val_acc,
+                        lr
+                    };
                     currentRunLog.push(newLogEntry);
 
                     const isLastEpoch = epoch + 1 === config.epochs;
@@ -117,6 +137,7 @@ const App: React.FC = () => {
                     config: { ...config },
                     log: currentRunLog,
                     model: newModel,
+                    modelInfo: modelInfo,
                 };
                 const updatedRuns = [newRun, ...prev];
                 return updatedRuns.slice(0, MAX_COMPLETED_RUNS);
@@ -128,6 +149,7 @@ const App: React.FC = () => {
         } finally {
             setIsTraining(false);
             setTrainingLog([]); // Clear live log
+            setCurrentModelInfo(null);
         }
     }, [config]);
 
@@ -188,7 +210,49 @@ const App: React.FC = () => {
     const handleClearRuns = () => {
         setCompletedRuns([]);
         setModelForTesting(null);
+        setCurrentModelInfo(null);
     }
+
+    const handleShowInfo = (topic: string) => setActiveInfoModal(topic);
+    const handleCloseInfo = () => setActiveInfoModal(null);
+
+    const renderInfoModal = () => {
+        if (!activeInfoModal) return null;
+
+        let title = '';
+        let content: React.ReactNode = null;
+
+        switch (activeInfoModal) {
+            case 'about':
+                title = 'About This App';
+                content = <AboutInfo />;
+                break;
+            case 'architecture':
+                title = 'Understanding Model Architectures';
+                content = <ArchitectureInfo />;
+                break;
+            case 'layers':
+                title = 'Hidden Layers, Units, and Activations';
+                content = <LayersInfo />;
+                break;
+            case 'lr':
+                title = 'The Learning Rate & Schedules';
+                content = <LearningRateInfo />;
+                break;
+            case 'epochs-batch':
+                title = 'Epochs & Batch Size';
+                content = <EpochsBatchSizeInfo />;
+                break;
+            default:
+                return null;
+        }
+
+        return (
+            <InfoModal title={title} onClose={handleCloseInfo}>
+                {content}
+            </InfoModal>
+        );
+    };
 
     const isIdle = !isTraining && trainingLog.length === 0 && completedRuns.length === 0;
 
@@ -197,14 +261,14 @@ const App: React.FC = () => {
             className="min-h-screen w-full bg-black bg-cover bg-center bg-fixed text-white font-sans" 
             style={{ backgroundImage: `url('https://files.catbox.moe/w544w8.webp')` }}
         >
-            {showAbout && <AboutModal onClose={() => setShowAbout(false)} />}
+            {renderInfoModal()}
 
             {modelToVisualize ? (
                 <ModelVisualizer model={modelToVisualize} onClose={() => setModelToVisualize(null)} />
             ) : (
                 <div className="min-h-screen w-full bg-black/60 backdrop-blur-sm flex flex-col">
                     <div className="flex-grow flex flex-col items-center p-4 sm:p-8">
-                        <Header onShowAbout={() => setShowAbout(true)} />
+                        <Header onShowInfo={handleShowInfo} />
                         <main className="w-full max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-8 mt-8">
                             <div className="lg:col-span-1 space-y-8">
                                 <TrainingConfigurator 
@@ -213,6 +277,7 @@ const App: React.FC = () => {
                                     onStartTraining={handleStartTraining} 
                                     onStopTraining={handleStopTraining}
                                     isTraining={isTraining} 
+                                    onShowInfo={handleShowInfo}
                                 />
                                 {savedModelExists && (
                                      <div className="bg-white/10 border border-white/20 rounded-2xl p-6 space-y-4 shadow-2xl">
@@ -272,7 +337,8 @@ const App: React.FC = () => {
                                             isLive={true}
                                             trainingLog={trainingLog} 
                                             config={config}
-                                            status={trainingStatus} 
+                                            status={trainingStatus}
+                                            modelInfo={currentModelInfo}
                                         />
                                     )}
                                     
@@ -286,6 +352,7 @@ const App: React.FC = () => {
                                             onTestModel={() => setModelForTesting(run.model)}
                                             onVisualizeModel={() => setModelToVisualize(run.model)}
                                             isModelInTest={modelForTesting === run.model}
+                                            modelInfo={run.modelInfo}
                                         />
                                     ))}
                                   </>

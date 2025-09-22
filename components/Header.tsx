@@ -3,10 +3,10 @@ import React from 'react';
 import { InfoIcon } from '../constants';
 
 interface HeaderProps {
-    onShowAbout: () => void;
+    onShowInfo: (topic: string) => void;
 }
 
-export const Header: React.FC<HeaderProps> = ({ onShowAbout }) => {
+export const Header: React.FC<HeaderProps> = ({ onShowInfo }) => {
     return (
         <header className="w-full text-center relative">
             <h1 className="text-4xl sm:text-5xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 via-pink-500 to-orange-400">
@@ -16,7 +16,7 @@ export const Header: React.FC<HeaderProps> = ({ onShowAbout }) => {
                 Build, Train, and Test Your Own Digit Recognition Model
             </p>
             <button 
-                onClick={onShowAbout} 
+                onClick={() => onShowInfo('about')} 
                 className="absolute top-0 right-0 p-2 text-gray-400 hover:text-cyan-300 transition-colors"
                 aria-label="About this application"
             >
