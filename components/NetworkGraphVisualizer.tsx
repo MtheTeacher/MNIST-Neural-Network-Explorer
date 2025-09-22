@@ -28,11 +28,16 @@ export const NetworkGraphVisualizer: React.FC<NetworkGraphVisualizerProps> = ({ 
     const [threshold, setThreshold] = useState(0.4);
 
     const denseLayers = useMemo(() => 
-        // Fix: Cast the filtered layers to the specific `tf.layers.Dense` type for type-safe access to weights.
-        model.layers.filter(l => l.getClassName() === 'Dense') as tf.layers.Dense[],
+        // Fix: The type cast `as tf.layers.Dense[]` was removed as it caused a compilation error.
+        // The `getClassName()` filter is sufficient to ensure these are dense layers, and the
+        // properties accessed are available on the base `tf.layers.Layer` type.
+        model.layers.filter(l => l.getClassName() === 'Dense'),
     [model]);
     
     const weights = useMemo(() => 
+        // Fix: The type `tf.layers.Dense` is not exported for use in type assertions.
+        // Since `getWeights()` is available on the base `tf.layers.Layer` class, the cast
+        // is unnecessary and has been removed to fix the compilation error.
         denseLayers.slice(1).map(l => l.getWeights()[0]),
     [denseLayers]);
 

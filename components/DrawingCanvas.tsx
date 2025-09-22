@@ -9,6 +9,7 @@ const LINE_WIDTH = 10;
 export interface DrawingCanvasRef {
   getTensor: () => tf.Tensor | null;
   clearCanvas: () => void;
+  getDataURL: () => string | null;
 }
 
 interface DrawingCanvasProps {
@@ -102,6 +103,10 @@ export const DrawingCanvas = forwardRef<DrawingCanvasRef, DrawingCanvasProps>(({
             ctx.fillStyle = 'black';
             ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
         }
+    };
+
+    const getDataURL = (): string | null => {
+        return canvasRef.current?.toDataURL() ?? null;
     };
     
     const getTensor = (): tf.Tensor | null => {
@@ -256,6 +261,7 @@ export const DrawingCanvas = forwardRef<DrawingCanvasRef, DrawingCanvasProps>(({
     useImperativeHandle(ref, () => ({
         getTensor,
         clearCanvas,
+        getDataURL,
     }));
     
     return (

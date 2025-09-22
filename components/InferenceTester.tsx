@@ -1,7 +1,7 @@
-import React, { useState, useCallback, useRef, createRef, useEffect } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import * as tf from '@tensorflow/tfjs';
 import { DrawingCanvas, type DrawingCanvasRef } from './DrawingCanvas';
-import { SparklesIcon, EraserIcon, PencilIcon, ImageIcon, CheckCircleIcon, XCircleIcon } from '../constants';
+import { SparklesIcon, EraserIcon, PencilIcon, ImageIcon, CheckCircleIcon, XCircleIcon, XIcon } from '../constants';
 import { MnistData } from '../services/mnistData';
 import type { MnistSample } from '../types';
 import { MnistCanvas } from './MnistCanvas';
@@ -10,24 +10,23 @@ interface InferenceTesterProps {
     model: tf.Sequential;
 }
 
+type DigitSlot = { thumbnail: string; tensor: tf.Tensor } | null;
+
 export const InferenceTester: React.FC<InferenceTesterProps> = ({ model }) => {
     // Shared state
     const [isProcessing, setIsProcessing] = useState(false);
     const [testMode, setTestMode] = useState<'draw' | 'mnist'>('draw');
 
     // State for 'draw' mode
+    const mainCanvasRef = useRef<DrawingCanvasRef>(null);
+    const [digitSlots, setDigitSlots] = useState<DigitSlot[]>(Array(10).fill(null));
     const [drawPredictions, setDrawPredictions] = useState<(number | null)[]>(Array(10).fill(null));
-    const canvasRefs = useRef<React.RefObject<DrawingCanvasRef>[]>(
-        Array(10).fill(null).map(() => createRef<DrawingCanvasRef>())
-    );
 
     // State for 'mnist' mode
     const [mnistSamples, setMnistSamples] = useState<MnistSample[]>([]);
     const [isLoadingMnist, setIsLoadingMnist] = useState(false);
     const [droppedImages, setDroppedImages] = useState<(MnistSample | null)[]>(Array(10).fill(null));
     const [mnistPredictions, setMnistPredictions] = useState<(number | null)[]>(Array(10).fill(null));
-    const samplesRef = useRef(mnistSamples);
-    samplesRef.current = mnistSamples;
     
     // Load MNIST test data when switching to that mode
     useEffect(() => {
@@ -48,26 +47,62 @@ export const InferenceTester: React.FC<InferenceTesterProps> = ({ model }) => {
         }
     }, [testMode, mnistSamples.length]);
 
-    // Cleanup tensors from samples on unmount
+    // Cleanup tensors from draw slots on unmount
     useEffect(() => {
+        // This cleanup function should only run when the component unmounts.
+        // By providing an empty dependency array, we prevent it from running
+        // on every state change, which was causing tensors to be disposed prematurely.
         return () => {
-            // The singleton now manages tensors, but if we created copies, we'd dispose them here.
-            // This is just for good practice, though not strictly needed with the new singleton.
-            samplesRef.current.forEach(sample => {
-                if (sample && sample.tensor && !sample.tensor.isDisposed) {
-                    // sample.tensor.dispose(); // Disabled as singleton manages this
+            digitSlots.forEach(slot => {
+                if (slot && slot.tensor && !slot.tensor.isDisposed) {
+                  slot.tensor.dispose();
                 }
             });
         };
     }, []);
 
+    const handleAssignDigit = (digitIndex: number) => {
+        if (!mainCanvasRef.current) return;
+
+        const tensor = mainCanvasRef.current.getTensor();
+        const thumbnail = mainCanvasRef.current.getDataURL();
+
+        if (tensor && thumbnail) {
+            // Dispose the old tensor for this slot if it exists
+            digitSlots[digitIndex]?.tensor.dispose();
+
+            const newSlots = [...digitSlots];
+            newSlots[digitIndex] = { thumbnail, tensor };
+            setDigitSlots(newSlots);
+
+            const newPredictions = [...drawPredictions];
+            newPredictions[digitIndex] = null;
+            setDrawPredictions(newPredictions);
+
+            mainCanvasRef.current.clearCanvas();
+        } else {
+            // Maybe add a small toast/notification later
+        }
+    };
+
+    const handleClearSlot = (digitIndex: number) => {
+        digitSlots[digitIndex]?.tensor.dispose();
+        
+        const newSlots = [...digitSlots];
+        newSlots[digitIndex] = null;
+        setDigitSlots(newSlots);
+
+        const newPredictions = [...drawPredictions];
+        newPredictions[digitIndex] = null;
+        setDrawPredictions(newPredictions);
+    };
+
     const handlePredictAll = useCallback(async () => {
         setIsProcessing(true);
         if (testMode === 'draw') {
             const tensorsAndIndices: { tensor: tf.Tensor; index: number }[] = [];
-            canvasRefs.current.forEach((ref, index) => {
-                const tensor = ref.current?.getTensor();
-                if (tensor) tensorsAndIndices.push({ tensor, index });
+            digitSlots.forEach((slot, index) => {
+                if (slot) tensorsAndIndices.push({ tensor: slot.tensor, index });
             });
 
             if (tensorsAndIndices.length > 0) {
@@ -81,7 +116,7 @@ export const InferenceTester: React.FC<InferenceTesterProps> = ({ model }) => {
                     newPredictions[tensorsAndIndices[i].index] = pred as number;
                 });
                 setDrawPredictions(newPredictions);
-                tf.dispose([batch, predictionsTensor, ...tensorsToBatch]);
+                tf.dispose([batch, predictionsTensor]);
             }
         } else { // 'mnist' mode
             const tensorsAndIndices: { tensor: tf.Tensor; index: number }[] = [];
@@ -104,11 +139,15 @@ export const InferenceTester: React.FC<InferenceTesterProps> = ({ model }) => {
             }
         }
         setIsProcessing(false);
-    }, [model, testMode, drawPredictions, droppedImages, mnistPredictions]);
+    }, [model, testMode, digitSlots, drawPredictions, droppedImages, mnistPredictions]);
 
     const handleClearAll = () => {
         if (testMode === 'draw') {
-            canvasRefs.current.forEach(ref => ref.current?.clearCanvas());
+            mainCanvasRef.current?.clearCanvas();
+            digitSlots.forEach(slot => {
+                if (slot) slot.tensor.dispose();
+            });
+            setDigitSlots(Array(10).fill(null));
             setDrawPredictions(Array(10).fill(null));
         } else {
             setDroppedImages(Array(10).fill(null));
@@ -116,7 +155,7 @@ export const InferenceTester: React.FC<InferenceTesterProps> = ({ model }) => {
         }
     };
     
-    // --- Drag and Drop Handlers ---
+    // --- Drag and Drop Handlers for MNIST mode ---
     const handleDragStart = (e: React.DragEvent, sampleId: number) => {
         e.dataTransfer.setData('application/mnist-sample-id', sampleId.toString());
     };
@@ -135,7 +174,6 @@ export const InferenceTester: React.FC<InferenceTesterProps> = ({ model }) => {
             setMnistPredictions(newPredictions);
         }
     };
-
 
     return (
         <div>
@@ -176,19 +214,62 @@ export const InferenceTester: React.FC<InferenceTesterProps> = ({ model }) => {
             </div>
 
             {testMode === 'draw' && (
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
-                    {Array.from({ length: 10 }).map((_, i) => (
-                        <div key={i} className="flex flex-col items-center text-center space-y-2">
-                            <DrawingCanvas ref={canvasRefs.current[i]} />
-                            <div className="h-12 flex items-center justify-center">
-                                {drawPredictions[i] !== null && (
-                                    <p className="text-4xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 to-blue-500">
-                                        {drawPredictions[i]}
-                                    </p>
-                                )}
-                            </div>
+                <div className="flex flex-col lg:flex-row gap-8 items-start">
+                    <div className="w-full lg:max-w-xs space-y-4">
+                        <h3 className="text-lg font-semibold text-center text-white">1. Draw a Digit</h3>
+                        <DrawingCanvas ref={mainCanvasRef} />
+                        <h3 className="text-lg font-semibold text-center text-white">2. Assign to a Slot</h3>
+                        <div className="grid grid-cols-5 gap-2">
+                            {Array.from({ length: 10 }).map((_, i) => (
+                                <button
+                                    key={i}
+                                    onClick={() => handleAssignDigit(i)}
+                                    className="bg-white/10 text-white hover:bg-cyan-500/50 font-semibold py-2 px-2 rounded-lg transition duration-300 text-sm"
+                                >
+                                    Slot {i}
+                                </button>
+                            ))}
                         </div>
-                    ))}
+                    </div>
+                    <div className="flex-1 w-full">
+                        <h3 className="text-lg font-semibold text-center text-white mb-4">3. Prediction Slots</h3>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
+                            {digitSlots.map((slot, i) => {
+                                const prediction = drawPredictions[i];
+                                const isCorrect = slot && prediction !== null && i === prediction;
+                                return (
+                                    <div key={i} className="flex flex-col items-center text-center space-y-2">
+                                        <div className="relative w-full aspect-square bg-black/30 border-2 border-dashed border-gray-600 rounded-xl flex items-center justify-center">
+                                            {slot ? (
+                                                <>
+                                                    <img src={slot.thumbnail} alt={`Drawing of ${i}`} className="w-full h-full rounded-lg" />
+                                                    <button onClick={() => handleClearSlot(i)} className="absolute top-1 right-1 p-1 bg-gray-900/50 hover:bg-red-500/80 rounded-full text-white transition-colors" aria-label={`Clear slot ${i}`}>
+                                                        <XIcon className="w-3 h-3" />
+                                                    </button>
+                                                </>
+                                            ) : (
+                                                <span className="text-4xl font-bold text-gray-500">{i}</span>
+                                            )}
+                                        </div>
+                                        <div className="h-12 flex flex-col items-center justify-center">
+                                            {prediction !== null && slot && (
+                                                <div className="flex items-center space-x-2">
+                                                    <p className={`text-3xl font-bold ${isCorrect ? 'text-green-400' : 'text-red-400'}`}>{prediction}</p>
+                                                    <div className="flex flex-col text-xs text-left">
+                                                        <span className="text-gray-400">(Is {i})</span>
+                                                        {isCorrect 
+                                                            ? <CheckCircleIcon className="w-5 h-5 text-green-400" /> 
+                                                            : <XCircleIcon className="w-5 h-5 text-red-400" />
+                                                        }
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                )
+                            })}
+                        </div>
+                    </div>
                 </div>
             )}
             
