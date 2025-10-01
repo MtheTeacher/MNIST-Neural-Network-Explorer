@@ -1,6 +1,6 @@
-# Pruning Step Error Log
+# Pruning Step Log - Successful Run
 
-The following output is observed when attempting to use the "Prune & Fine-Tune" feature.
+The following output is observed when successfully using the "Prune & Fine-Tune" feature.
 
 ```
 Log
@@ -18,6 +18,24 @@ Log
 Log
  "- Test samples (for UI): 10000" 
 
-Error
- "Pruning failed:" "Cannot read properties of undefined (reading 'length')"
+Log
+ "Starting training..."
+
+Log
+ "Epoch 10/10 complete..."
+
+Log
+ "Training complete!"
+
+Log
+ "Pruning model..."
+
+Log
+ "Starting fine-tuning..."
+
+Log
+ "Epoch 5/5 complete..."
+
+Log
+ "Training complete!"
 ```

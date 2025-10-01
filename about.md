@@ -154,18 +154,29 @@ An earlier version of the app used a `3px` Gaussian blur, which was found to be 
 
 The fix was to **re-introduce a more subtle `2px` Gaussian blur**. This value strikes a balance, softening the hard edges of the user's drawing without destroying key features like corners and endpoints. This blur is applied to the 28x28 scaled-down image before it is centered and fed to the model. This change ensures the input from the drawing canvas more closely matches the "fuzziness" of the MNIST training set, leading to more reliable and accurate predictions.
 
-## 10. Unresolved Issue: Model Pruning Failures
+## 10. Resolution Note: Fixing the Model Pruning Workflow
 
-This section documents a known, unresolved issue with the "Prune & Fine-Tune" feature.
+This section documents the diagnosis and resolution of a critical bug that caused the "Prune & Fine-Tune" feature to fail consistently.
 
-### The Problem
+### The Issue: Metadata Loss During State Transitions
 
-The pruning feature is currently non-functional and results in a "Pruning failed" error. The error message, `"Cannot read properties of undefined (reading 'length')"`, indicates that the application is failing to correctly reconstruct the model's architecture after the pruning calculations are complete.
+The pruning workflow would abort with a `Cannot read properties of undefined (reading 'length')` error. The root cause was a subtle but critical interaction between TensorFlow.js and React's state management:
 
-### Root Cause Analysis
+1.  **React State Strips Metadata:** After a model was trained, the `tf.Sequential` object was stored in React state. React's development mode and serialization processes would strip non-enumerable properties from this object to make it serializable. Unfortunately, TensorFlow.js stores critical graph information, including the model's input shape (`model.inputs`), on these non-enumerable properties.
+2.  **Loss of Input Shape:** By the time the model object was passed to the `pruneModel` function, its `model.inputs` property was `undefined`.
+3.  **Reconstruction Failure:** The pruning function needed this input shape to "build" a new, empty model architecture before it could be populated with the pruned weights. Without the shape, the `build()` call failed, leading to the crash.
 
-The core of the issue is that the application cannot reliably retrieve the **input shape** from a model that has already been trained. To create a new, pruned model, a copy of the original model's architecture must be built. This requires knowing the exact shape of the data the model expects (e.g., `[784]` for a flattened MNIST image).
+### The Solution: Pre-emptive Metadata Capture and Robust Reconstruction
 
-Even though the model was successfully trained (which implies its input shape was known), this information appears to be unavailable or lost when the model object is later accessed by the pruning function. The application uses the standard, documented method (`model.inputs[0].shape`) to retrieve this information, but it is unexpectedly returning `undefined`.
+A two-part fix was implemented to make the pruning pipeline robust against this metadata loss:
 
-This is a subtle issue related to the internal state of TensorFlow.js model objects. We are actively investigating the root cause and consulting resources to find a robust solution. Until resolved, the pruning feature remains disabled.
+1.  **Capture Metadata Immediately After Training:** In `App.tsx`, immediately after the `model.fit()` call resolves, the application now captures two key pieces of metadata *before* the model is stored in React state:
+    *   The **input shape**, read directly from the live model's `model.inputs[0].shape`.
+    *   The full **model architecture as JSON**, using `model.toJSON()`.
+    This information is stored alongside the model in the `TrainingRun` object, ensuring it survives React's state serialization.
+
+2.  **Reconstruct from JSON:** The `pruneModel` function in `services/modelService.ts` was refactored. Instead of trying to rebuild the model from a configuration object and a lost input shape, it now uses the much more reliable `tf.loadLayersModel` with the saved model JSON. This method reconstructs a complete, "built" model with the correct input signature every time.
+
+3.  **Corrected Memory Management:** A secondary bug was also fixed in `pruneModel`. The use of `tf.tidy()` was incorrect and caused the newly created pruned weight tensors to be disposed of before they could be set on the new model. The logic was corrected to use `tf.keep()` to explicitly preserve these tensors through the tidy scope, ensuring the final pruned model receives its weights correctly.
+
+By persisting the model's structural metadata before React can strip it and by using a more robust method for model reconstruction, the pruning pipeline is now stable and functions as intended.

@@ -27,6 +27,8 @@ interface TrainingRun {
     model: tf.Sequential | null;
     modelInfo: ModelInfo | null;
     pruning?: PruningInfo;
+    inputShape?: (number | null)[];
+    modelJSON?: object;
 }
 
 const MAX_COMPLETED_RUNS = 3;
@@ -135,6 +137,16 @@ const App: React.FC = () => {
             
             setTrainingStatus(finalStatus);
 
+            // Capture metadata BEFORE storing in React state to prevent it from being stripped.
+            // The model object is "live" here and should have all its properties.
+            const inputTensorShape = model.inputs[0]?.shape; // e.g., [null, 784]
+            const inputShape = inputTensorShape ? inputTensorShape.slice(1) : undefined; // e.g., [784]
+            const modelJSON = model.toJSON(null, false) as object;
+
+            if (!inputShape) {
+                console.error("Critical: Could not determine input shape from model.inputs after training. Pruning will fail.");
+            }
+
             setCompletedRuns(prev => {
                 const newRun: TrainingRun = {
                     id: Date.now(),
@@ -142,6 +154,8 @@ const App: React.FC = () => {
                     log: currentRunLog,
                     model: model,
                     modelInfo: modelInfo,
+                    inputShape: inputShape,
+                    modelJSON: modelJSON,
                     ...(pruningInfo && { pruning: pruningInfo }),
                 };
                 const updatedRuns = [newRun, ...prev];
@@ -167,13 +181,14 @@ const App: React.FC = () => {
     const handleStartPruningAndFinetuning = useCallback(async (originalRun: TrainingRun, targetSparsity: number) => {
         setRunToPrune(null); // Close modal
         setTrainingStatus('Pruning model...');
-        if (!originalRun.model) {
-            setTrainingStatus('Error: Original model not available for pruning.');
+        if (!originalRun.model || !originalRun.inputShape || !originalRun.modelJSON) {
+            setTrainingStatus('Error: Original model metadata not available for pruning.');
+            console.error("Pruning pre-requisites not met:", originalRun);
             return;
         }
 
         try {
-            const { prunedModel, actualSparsity } = await pruneModel(originalRun.model, targetSparsity);
+            const { prunedModel, actualSparsity } = await pruneModel(originalRun.model, targetSparsity, originalRun.inputShape, originalRun.modelJSON);
             prunedModel.summary();
 
             const finetuneConfig: ModelConfig = {
@@ -192,7 +207,7 @@ const App: React.FC = () => {
             await runTrainingProcess(prunedModel, finetuneConfig, pruningInfo);
         
         } catch (error) {
-             console.error('Pruning failed:', error);
+             console.error('Pruning failed:', error, error instanceof Error ? error.stack : '');
             setTrainingStatus(`Error during pruning: ${error instanceof Error ? error.message : 'Unknown error'}`);
         }
 
