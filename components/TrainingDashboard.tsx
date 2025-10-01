@@ -3,6 +3,8 @@ import type { TrainingLog, ModelConfig, ModelInfo, PruningInfo } from '../types'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { LEARNING_RATE_SCHEDULES } from '../constants';
 import { RocketIcon, EyeIcon, InfoIcon, ChevronDownIcon, CutIcon } from '../constants';
+import type { TrainingRun as FullTrainingRun } from '../App';
+
 
 interface TrainingRun {
     id: number;
@@ -21,16 +23,17 @@ interface TrainingDashboardProps {
     modelInfo?: ModelInfo | null;
     // Props for completed run
     run?: TrainingRun;
+    parentRun?: FullTrainingRun;
     onTestModel?: () => void;
     onVisualizeModel?: () => void;
-    onPruneModel?: (run: TrainingRun) => void;
+    onPruneModel?: (run: FullTrainingRun) => void;
     isModelInTest?: boolean;
 }
 
 const getScheduleName = (id: string) => LEARNING_RATE_SCHEDULES.find(s => s.id === id)?.name || 'Unknown';
 
 export const TrainingDashboard: React.FC<TrainingDashboardProps> = (props) => {
-    const { isLive, status, onTestModel, onVisualizeModel, onPruneModel, isModelInTest } = props;
+    const { isLive, status, onTestModel, onVisualizeModel, onPruneModel, isModelInTest, parentRun } = props;
     
     // Consolidate props for live vs completed runs
     const runData = isLive
@@ -45,6 +48,21 @@ export const TrainingDashboard: React.FC<TrainingDashboardProps> = (props) => {
     const finalAccuracy = lastLog ? (lastLog.val_accuracy ?? lastLog.accuracy) : null;
     const hasValidationData = lastLog && lastLog.val_accuracy !== undefined;
     
+    let effectiveParams: number | null = null;
+    let accuracyDiff: number | null = null;
+
+    if (pruning && modelInfo) {
+        effectiveParams = Math.round(modelInfo.totalParams * (1 - pruning.sparsity));
+    }
+
+    if (pruning && parentRun && finalAccuracy && parentRun.log.length > 0) {
+        const parentLastLog = parentRun.log[parentRun.log.length - 1];
+        if (parentLastLog) {
+            const parentAccuracy = parentLastLog.val_accuracy ?? parentLastLog.accuracy;
+            accuracyDiff = finalAccuracy - parentAccuracy;
+        }
+    }
+
     const title = pruning
         ? `Pruned Model (${(pruning.sparsity * 100).toFixed(0)}% sparse)`
         : (modelInfo?.name || (isLive ? "Live Training" : "Completed Run"));
@@ -62,6 +80,14 @@ export const TrainingDashboard: React.FC<TrainingDashboardProps> = (props) => {
                         {config.dropoutRate > 0 && <span>Dropout: <span className="font-semibold text-gray-200">{config.dropoutRate}</span></span>}
                         {modelInfo && <span>Params: <span className="font-semibold text-gray-200">{modelInfo.totalParams.toLocaleString()}</span></span>}
                         {pruning && <span>Sparsity: <span className="font-semibold text-gray-200">{(pruning.sparsity * 100).toFixed(0)}%</span></span>}
+                        {effectiveParams !== null && (
+                            <span>Effective Params: <span className="font-semibold text-cyan-300">{effectiveParams.toLocaleString()}</span></span>
+                        )}
+                        {accuracyDiff !== null && (
+                             <span>Validation Acc. vs Unpruned: <span className={`font-semibold ${accuracyDiff >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                {accuracyDiff >= 0 ? '+' : ''}{(accuracyDiff * 100).toFixed(2)}%
+                            </span></span>
+                        )}
                     </div>
                 </div>
                 {!isLive && (
@@ -86,7 +112,7 @@ export const TrainingDashboard: React.FC<TrainingDashboardProps> = (props) => {
                         )}
                         {onPruneModel && config.architecture === 'dense' && (
                              <button
-                                onClick={() => onPruneModel(props.run!)}
+                                onClick={() => onPruneModel(props.run as FullTrainingRun)}
                                 className="font-bold py-2 px-4 rounded-full flex items-center justify-center space-x-2 transition-all duration-300 transform hover:scale-105 text-sm bg-white/20 hover:bg-white/30 text-white"
                             >
                                 <CutIcon className="w-4 h-4"/>

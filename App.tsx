@@ -20,7 +20,7 @@ import { LayersInfo } from './components/info-content/LayersInfo';
 import { LearningRateInfo } from './components/info-content/LearningRateInfo';
 import { EpochsBatchSizeInfo } from './components/info-content/EpochsBatchSizeInfo';
 
-interface TrainingRun {
+export interface TrainingRun {
     id: number;
     config: ModelConfig;
     log: TrainingLog[];
@@ -395,17 +395,23 @@ const App: React.FC = () => {
                         />
                     )}
                     
-                    {completedRuns.map(run => (
-                        <TrainingDashboard 
-                            key={run.id}
-                            isLive={false}
-                            run={run}
-                            onTestModel={() => setModelForTesting(run.model)}
-                            onVisualizeModel={() => setModelToVisualize(run.model)}
-                            isModelInTest={modelForTesting === run.model}
-                            onPruneModel={handlePruneRequest}
-                        />
-                    ))}
+                    {completedRuns.map(run => {
+                        const parentRun = run.pruning
+                            ? completedRuns.find(p => p.id === run.pruning!.fromRunId)
+                            : undefined;
+                        return (
+                            <TrainingDashboard 
+                                key={run.id}
+                                isLive={false}
+                                run={run}
+                                parentRun={parentRun}
+                                onTestModel={() => setModelForTesting(run.model)}
+                                onVisualizeModel={() => setModelToVisualize(run.model)}
+                                isModelInTest={modelForTesting === run.model}
+                                onPruneModel={handlePruneRequest}
+                            />
+                        );
+                    })}
                   </>
                 )}
                 {modelForTesting && (
