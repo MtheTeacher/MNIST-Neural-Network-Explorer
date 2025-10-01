@@ -1,4 +1,3 @@
-
 import React from 'react';
 import type { LRSchedulerConfig } from './types';
 
@@ -8,6 +7,7 @@ export const LEARNING_RATE_SCHEDULES: LRSchedulerConfig[] = [
     { id: 'exponential', name: 'Exponential Decay', description: 'Gradually reduces the learning rate exponentially.' },
     { id: 'cosine', name: 'Cosine Annealing', description: 'Reduces LR following the shape of a cosine curve.' },
     { id: 'warmup-cosine', name: 'Warm-up & Cosine', description: 'Starts low, warms up, then follows a cosine curve.' },
+    { id: 'cosine-restarts', name: 'Cosine Annealing w/ Restarts', description: 'Cosine annealing that periodically resets the LR to its initial value.' },
     { id: 'plateau', name: 'Reduce on Plateau', description: 'Reduces LR when validation accuracy stops improving. Graph is illustrative.' },
     { id: 'one-cycle', name: 'One-Cycle Policy', description: 'Increases LR to a max, then decreases it, over one cycle.' },
 ];
@@ -178,5 +178,15 @@ export const InfoIcon: React.FC<{className?: string}> = ({ className }) => (
         <circle cx="12" cy="12" r="10"></circle>
         <line x1="12" y1="16" x2="12" y2="12"></line>
         <line x1="12" y1="8" x2="12.01" y2="8"></line>
+    </svg>
+);
+
+export const CutIcon: React.FC<{className?: string}> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+        <circle cx="6" cy="6" r="3"></circle>
+        <circle cx="6" cy="18" r="3"></circle>
+        <line x1="20" y1="4" x2="8.12" y2="15.88"></line>
+        <line x1="14.47" y1="14.48" x2="20" y2="20"></line>
+        <line x1="8.12" y1="8.12" x2="12" y2="12"></line>
     </svg>
 );

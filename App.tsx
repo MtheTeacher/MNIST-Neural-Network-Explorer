@@ -1,4 +1,3 @@
-
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import type * as tf from '@tensorflow/tfjs';
 import { TrainingConfigurator } from './components/TrainingConfigurator';
@@ -8,9 +7,10 @@ import { Header } from './components/Header';
 import { ModelVisualizer } from './components/ModelVisualizer';
 import { InfoModal } from './components/InfoModal';
 import { WaveScape } from './components/WaveScape';
-import { createModel, trainModel, saveModel, loadModel, checkForSavedModel, deleteSavedModel, downloadModel } from './services/modelService';
+import { PruningModal } from './components/PruningModal';
+import { createModel, trainModel, saveModel, loadModel, checkForSavedModel, deleteSavedModel, downloadModel, pruneModel } from './services/modelService';
 import { MnistData } from './services/mnistData';
-import type { ModelConfig, TrainingLog, ModelInfo } from './types';
+import type { ModelConfig, TrainingLog, ModelInfo, PruningInfo } from './types';
 import { BrainCircuitIcon, PlayIcon, RocketIcon, SaveIcon, FolderDownIcon, TrashIcon, DownloadIcon, XIcon } from './constants';
 import { analyzeModel } from './services/modelAnalysisService';
 // Info Modal Content
@@ -26,6 +26,7 @@ interface TrainingRun {
     log: TrainingLog[];
     model: tf.Sequential | null;
     modelInfo: ModelInfo | null;
+    pruning?: PruningInfo;
 }
 
 const MAX_COMPLETED_RUNS = 3;
@@ -41,6 +42,7 @@ const App: React.FC = () => {
         epochs: 10,
         batchSize: 512,
         architecture: 'dense',
+        dropoutRate: 0.25,
     });
     const [isTraining, setIsTraining] = useState(false);
     const [trainingLog, setTrainingLog] = useState<TrainingLog[]>([]);
@@ -51,6 +53,7 @@ const App: React.FC = () => {
     const [completedRuns, setCompletedRuns] = useState<TrainingRun[]>([]);
     const [activeInfoModal, setActiveInfoModal] = useState<string | null>(null);
     const [currentModelInfo, setCurrentModelInfo] = useState<ModelInfo | null>(null);
+    const [runToPrune, setRunToPrune] = useState<TrainingRun | null>(null);
     const stopTrainingRef = useRef(false);
 
     useEffect(() => {
@@ -66,22 +69,23 @@ const App: React.FC = () => {
         setTrainingStatus('Stopping training...');
     }, []);
 
-    const handleStartTraining = useCallback(async () => {
+    const runTrainingProcess = useCallback(async (
+        modelToTrain: tf.Sequential,
+        configForRun: ModelConfig,
+        pruningInfo?: PruningInfo
+    ) => {
         setIsTraining(true);
         setTrainingLog([]);
         setModelForTesting(null);
         setTrainingStatus('Initializing...');
         stopTrainingRef.current = false;
-        
+
         const currentRunLog: TrainingLog[] = [];
-        let newModel: tf.Sequential | null = null;
+        let model = modelToTrain;
         let modelInfo: ModelInfo | null = null;
-
+        
         try {
-            newModel = createModel(config);
-            newModel.summary();
-
-            modelInfo = analyzeModel(newModel, config);
+            modelInfo = analyzeModel(model, configForRun);
             setCurrentModelInfo(modelInfo);
 
             setTrainingStatus('Loading MNIST dataset...');
@@ -91,15 +95,15 @@ const App: React.FC = () => {
             
             setTrainingStatus('Starting training...');
             await trainModel(
-                newModel,
+                model,
                 trainImages,
                 trainLabels,
                 testImages,
                 testLabels,
-                config,
+                configForRun,
                 async (epoch, logs, lr) => {
-                    if (stopTrainingRef.current && newModel) {
-                        newModel.stopTraining = true;
+                    if (stopTrainingRef.current && model) {
+                        model.stopTraining = true;
                     }
                     const newLogEntry: TrainingLog = {
                         epoch: epoch + 1,
@@ -111,19 +115,16 @@ const App: React.FC = () => {
                     };
                     currentRunLog.push(newLogEntry);
 
-                    const isLastEpoch = epoch + 1 === config.epochs;
+                    const isLastEpoch = epoch + 1 === configForRun.epochs;
                     const isUpdateEpoch = (epoch + 1) % 3 === 0;
 
                     if (isUpdateEpoch || isLastEpoch) {
                         setTrainingLog([...currentRunLog]);
-                        // Yield to the browser's render cycle. requestAnimationFrame ensures that the main thread
-                        // is free for the browser to process the UI update and paint the new chart data before
-                        // the next heavy training epoch begins. This is more reliable than setTimeout.
                         await new Promise(resolve => requestAnimationFrame(resolve));
                     }
                     
                     if (!stopTrainingRef.current) {
-                        setTrainingStatus(`Epoch ${epoch + 1}/${config.epochs} complete...`);
+                        setTrainingStatus(`Epoch ${epoch + 1}/${configForRun.epochs} complete...`);
                     }
                 }
             );
@@ -134,14 +135,14 @@ const App: React.FC = () => {
             
             setTrainingStatus(finalStatus);
 
-            // Add to completed runs
             setCompletedRuns(prev => {
                 const newRun: TrainingRun = {
                     id: Date.now(),
-                    config: { ...config },
+                    config: { ...configForRun },
                     log: currentRunLog,
-                    model: newModel,
+                    model: model,
                     modelInfo: modelInfo,
+                    ...(pruningInfo && { pruning: pruningInfo }),
                 };
                 const updatedRuns = [newRun, ...prev];
                 return updatedRuns.slice(0, MAX_COMPLETED_RUNS);
@@ -152,10 +153,51 @@ const App: React.FC = () => {
             setTrainingStatus(`Error during training: ${error instanceof Error ? error.message : 'Unknown error'}`);
         } finally {
             setIsTraining(false);
-            setTrainingLog([]); // Clear live log
+            setTrainingLog([]);
             setCurrentModelInfo(null);
         }
-    }, [config]);
+    }, []);
+
+    const handleStartTraining = useCallback(async () => {
+        const newModel = createModel(config);
+        newModel.summary();
+        await runTrainingProcess(newModel, config);
+    }, [config, runTrainingProcess]);
+    
+    const handleStartPruningAndFinetuning = useCallback(async (originalRun: TrainingRun, targetSparsity: number) => {
+        setRunToPrune(null); // Close modal
+        setTrainingStatus('Pruning model...');
+        if (!originalRun.model) {
+            setTrainingStatus('Error: Original model not available for pruning.');
+            return;
+        }
+
+        try {
+            const { prunedModel, actualSparsity } = await pruneModel(originalRun.model, targetSparsity);
+            prunedModel.summary();
+
+            const finetuneConfig: ModelConfig = {
+                ...originalRun.config,
+                epochs: 5, // Short fine-tuning run
+                learningRate: 0.0001, // Low learning rate for fine-tuning
+                lrSchedule: 'constant',
+            };
+            
+            const pruningInfo: PruningInfo = {
+                fromRunId: originalRun.id,
+                sparsity: actualSparsity
+            };
+            
+            setTrainingStatus('Starting fine-tuning...');
+            await runTrainingProcess(prunedModel, finetuneConfig, pruningInfo);
+        
+        } catch (error) {
+             console.error('Pruning failed:', error);
+            setTrainingStatus(`Error during pruning: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        }
+
+    }, [runTrainingProcess]);
+
 
     const handleSaveModel = useCallback(async () => {
         if (!modelForTesting) return;
@@ -216,6 +258,10 @@ const App: React.FC = () => {
         setModelForTesting(null);
         setCurrentModelInfo(null);
     }
+    
+    const handlePruneRequest = (run: TrainingRun) => {
+        setRunToPrune(run);
+    };
 
     const handleShowInfo = (topic: string) => setActiveInfoModal(topic);
     const handleCloseInfo = () => setActiveInfoModal(null);
@@ -338,13 +384,11 @@ const App: React.FC = () => {
                         <TrainingDashboard 
                             key={run.id}
                             isLive={false}
-                            trainingLog={run.log}
-                            config={run.config}
-                            status="Completed"
+                            run={run}
                             onTestModel={() => setModelForTesting(run.model)}
                             onVisualizeModel={() => setModelToVisualize(run.model)}
                             isModelInTest={modelForTesting === run.model}
-                            modelInfo={run.modelInfo}
+                            onPruneModel={handlePruneRequest}
                         />
                     ))}
                   </>
@@ -405,6 +449,14 @@ const App: React.FC = () => {
             style={{ backgroundImage: `url('https://files.catbox.moe/w544w8.webp')` }}
         >
             {renderInfoModal()}
+            
+            {runToPrune && (
+                <PruningModal 
+                    run={runToPrune}
+                    onClose={() => setRunToPrune(null)}
+                    onStartFinetuning={handleStartPruningAndFinetuning}
+                />
+            )}
 
             {modelToVisualize ? (
                 <ModelVisualizer model={modelToVisualize} onClose={() => setModelToVisualize(null)} />

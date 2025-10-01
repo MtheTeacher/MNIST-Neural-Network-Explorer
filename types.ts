@@ -1,4 +1,3 @@
-
 import type * as tf from '@tensorflow/tfjs';
 
 export interface LayerConfig {
@@ -13,7 +12,8 @@ export type LRSchedulerId =
     | 'cosine'
     | 'warmup-cosine'
     | 'plateau'
-    | 'one-cycle';
+    | 'one-cycle'
+    | 'cosine-restarts';
 
 export interface LRSchedulerConfig {
     id: LRSchedulerId;
@@ -29,6 +29,7 @@ export interface ModelConfig {
     epochs: number;
     batchSize: number;
     architecture: 'dense' | 'cnn';
+    dropoutRate: number;
 }
 
 export interface TrainingLog {
@@ -58,4 +59,9 @@ export interface ModelInfo {
     name: string;
     totalParams: number;
     layerCalcs: LayerCalc[];
+}
+
+export interface PruningInfo {
+    fromRunId: number;
+    sparsity: number;
 }

@@ -45,6 +45,9 @@ export function createModel(config: ModelConfig): tf.Sequential {
             units: config.layers[0].units,
             activation: config.layers[0].activation,
         }));
+        if (config.dropoutRate > 0) {
+            model.add(tf.layers.dropout({ rate: config.dropoutRate }));
+        }
 
         for (let i = 1; i < config.layers.length; i++) {
             const layerConfig = config.layers[i];
@@ -52,6 +55,9 @@ export function createModel(config: ModelConfig): tf.Sequential {
                 units: layerConfig.units,
                 activation: layerConfig.activation,
             }));
+            if (config.dropoutRate > 0) {
+                model.add(tf.layers.dropout({ rate: config.dropoutRate }));
+            }
         }
 
         model.add(tf.layers.dense({
@@ -143,4 +149,102 @@ export async function checkForSavedModel(): Promise<boolean> {
 
 export async function deleteSavedModel(): Promise<void> {
     await tf.io.removeModel(MODEL_STORAGE_KEY);
+}
+
+/**
+ * Applies global magnitude-based weight pruning to a model.
+ * @param model The trained tf.Sequential model to prune.
+ * @param targetSparsity The desired fraction of weights to be zeroed out (e.g., 0.9 for 90%).
+ * @returns A new, pruned model and the actual sparsity achieved.
+ */
+export async function pruneModel(
+    model: tf.Sequential,
+    targetSparsity: number
+): Promise<{ prunedModel: tf.Sequential; actualSparsity: number }> {
+    return tf.tidy(() => {
+        // Step 1: Collect all weight values from trainable layers (Dense, Conv2D)
+        const allWeights: tf.Tensor[] = [];
+        for (const layer of model.layers) {
+            if (layer.getWeights().length > 0 && (layer.getClassName() === 'Dense' || layer.getClassName() === 'Conv2d')) {
+                // We only prune the kernel (weights), not the bias
+                allWeights.push(layer.getWeights()[0]);
+            }
+        }
+        if (allWeights.length === 0) {
+            throw new Error("No trainable weights found to prune.");
+        }
+
+        // Step 2: Find the magnitude threshold for the target sparsity
+        const allValues = tf.concat(allWeights.map(w => w.flatten())).abs();
+        const k = Math.ceil(allValues.size * (1 - targetSparsity));
+        const topKValues = tf.topk(allValues, k, true).values;
+        const threshold = topKValues.min(); // The smallest of the top k values is our threshold
+
+        // Step 3: Create new weights with values below the threshold zeroed out
+        const originalWeights = model.getWeights();
+        const prunedWeights: tf.Tensor[] = [];
+        let totalWeightCount = 0;
+        let zeroWeightCount = 0;
+
+        for (const originalWeight of originalWeights) {
+            // Only prune kernels (weights), not biases. Biases are typically the odd-indexed tensors.
+            const isKernel = originalWeight.rank > 1; 
+
+            if (isKernel) {
+                const mask = originalWeight.abs().greaterEqual(threshold);
+                const prunedWeight = originalWeight.mul(mask);
+                
+                // For calculating actual sparsity
+                // FIX: `tf.countNonZero` does not exist in tfjs. Use `notEqual(0).sum()` instead.
+                const nonZeroCount = prunedWeight.notEqual(tf.scalar(0)).sum().dataSync()[0];
+                const zeroValues = prunedWeight.size - nonZeroCount;
+                zeroWeightCount += zeroValues;
+                totalWeightCount += prunedWeight.size;
+
+                prunedWeights.push(prunedWeight);
+            } else {
+                prunedWeights.push(originalWeight.clone()); // Keep biases as they are
+                totalWeightCount += originalWeight.size; // Biases are non-zero
+            }
+        }
+
+        // Step 4: Create a new model with the same architecture and set the pruned weights
+        const config = model.getConfig();
+        const prunedModel = tf.sequential(config as tf.SequentialArgs);
+        
+        // The `model.inputs` property provides the most reliable way to get the
+        // model's input shape, as it's derived directly from the built model graph.
+        // This avoids issues where layer configs might not contain the batchInputShape.
+        const batchInputShape = model.inputs[0].shape;
+
+        if (!batchInputShape || batchInputShape.length < 2) {
+            throw new Error(`Could not determine a valid input shape from the model's inputs. Shape found: ${JSON.stringify(batchInputShape)}`);
+        }
+        
+        // The build method expects the shape for a single sample, without the batch dimension.
+        // The shape from model.inputs is [null, 784], so we slice it to get [784].
+        const inputShapeForBuild = batchInputShape.slice(1);
+        prunedModel.build(inputShapeForBuild);
+
+        prunedModel.setWeights(prunedWeights);
+
+        // Re-compile the model for fine-tuning
+        prunedModel.compile({
+            optimizer: tf.train.adam(0.0001), // A low LR is good for fine-tuning
+            loss: 'categoricalCrossentropy',
+            metrics: ['accuracy'],
+        });
+        
+        const actualSparsity = totalWeightCount > 0 ? zeroWeightCount / totalWeightCount : 0;
+        
+        // Clean up tensors that are no longer needed
+        tf.dispose(allWeights);
+        tf.dispose(allValues);
+        tf.dispose(topKValues);
+        tf.dispose(threshold);
+        tf.dispose(originalWeights);
+        // The tensors inside prunedWeights are now managed by the new model, so they shouldn't be disposed here.
+
+        return { prunedModel, actualSparsity };
+    });
 }

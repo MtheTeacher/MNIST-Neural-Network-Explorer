@@ -9,9 +9,10 @@ The core purpose of this application is to make the concepts of neural networks 
 ## 2. Core Features
 
 - **Interactive Model Configuration:** Visually add or remove layers, set the number of neurons, and choose activation functions.
-- **Advanced Hyperparameter Tuning:** Adjust learning rates, select from various learning rate schedules, and set epoch counts and batch sizes.
+- **Advanced Hyperparameter Tuning:** Adjust learning rates, select from various learning rate schedules, set epoch counts and batch sizes, and apply regularization like Dropout.
 - **Real-Time Training Visualization:** Watch your model's accuracy and loss evolve epoch-by-epoch with dynamic, easy-to-read charts.
 - **Run Comparison:** Train multiple models with different configurations and compare their performance side-by-side.
+- **Pruning & Fine-Tuning:** Take a large, trained model and make it smaller and more efficient through weight pruning, then fine-tune it to recover accuracy.
 - **Two Modes of Interactive Testing:**
     1.  **Draw Your Own:** Test your model's capabilities on digits you draw yourself.
     2.  **MNIST Test Set:** Validate your model against unseen images from the official MNIST test dataset using a simple drag-and-drop interface.
@@ -20,60 +21,68 @@ The core purpose of this application is to make the concepts of neural networks 
     2.  **Live Activation Flow:** Draw a digit and watch the neuron activations propagate through the network in real-time.
 - **In-Browser Model Management:** Save your trained models to your browser's local storage, load them back later, or download the model files to use elsewhere. All training and inference happen directly in your browser using TensorFlow.js, with no server-side computation required.
 
-## 3. How to Use the Application: A Walkthrough
+## 3. Exploring Modern Training Techniques
+
+This application demonstrates key principles from modern machine learning. A core insight in modern ML is that it's often better to **start with a larger, more powerful model than you need, train it intelligently, and then make it smaller and more efficient**. This "start big → train smart → prune" approach can often lead to a final model that is both smaller and more accurate than a model that was designed to be small from the beginning.
+
+### Stage 1: Train Smart
+
+The first step is to train a large, over-parameterized model effectively.
+
+- **Dropout (Regularization):** When a model is too powerful, it can "memorize" training examples instead of learning general patterns (overfitting). Dropout combats this by randomly "dropping" neurons during training, forcing the network to learn more robust features. You can control this with the **Dropout Rate** slider.
+- **Advanced Learning Rate Schedules:** Finding the best solution is tricky. The training process can get stuck in a "good" but not "great" solution. A schedule like **Cosine Annealing with Restarts** helps the model escape these ruts by periodically resetting the learning rate, allowing it to explore more of the solution space and find a better final result.
+
+### Stage 2: Prune & Fine-Tune (New!)
+
+After you have a well-trained large model, you can make it more efficient through **pruning**.
+
+- **What is Pruning?** Pruning is the process of removing unnecessary connections (weights) from a neural network. After training, many weights are often very close to zero and contribute very little to the model's predictions. **Magnitude Pruning**, which is used in this app, identifies these low-magnitude weights and permanently sets them to zero, effectively removing them.
+- **Why Prune?** The goal is to create a "sparse" model—one with many zero-value weights. This makes the model smaller (less storage) and faster (fewer calculations during inference), which is critical for running on devices like mobile phones.
+- **Fine-Tuning:** After pruning, the model's accuracy will drop slightly. **Fine-tuning** is a short, subsequent training run (usually with a very low learning rate) that allows the remaining weights to adjust and compensate for the connections that were removed, often recovering most, if not all, of the original accuracy.
+
+This app allows you to perform this entire process and then compare your new, efficient pruned model against its larger parent and against a smaller model trained from scratch. You can often prove that the **large-then-pruned model is more accurate** than a small model with the same final number of parameters.
+
+## 4. How to Use the Application: A Walkthrough
 
 ### Step 1: Configure Your Model
-On the left-hand side, you'll find the **"Configure Model"** panel. This is your command center for designing the network.
-
-- **Architecture Presets:** Start quickly with pre-defined architectures like "Simple", "Deep", "Wide", or a high-performance "CNN" (Convolutional Neural Network).
-- **Hidden Layers:** For dense models, you can add or remove layers. For each layer, you can specify the number of **Units** (neurons) and the **Activation** function (e.g., 'relu').
-- **Hyperparameters:**
-    - **Learning Rate Schedule:** This determines how the learning rate changes during training. The graph provides a visual preview of the selected schedule.
-    - **Learning Rate:** Controls the step size the model takes during optimization.
-    - **Epochs:** The number of times the model will see the entire training dataset.
-    - **Batch Size:** The number of training samples processed before the model's weights are updated.
+Use the **"Configure Model"** panel to design your network. To experiment with pruning, it's best to start with a "Deep" or "Wide" preset to create a large, over-parameterized model.
 
 ### Step 2: Train the Model
-Once you're happy with your configuration, click **"Start Training"**. The main area will update with a **"Live Training"** dashboard. Here you can monitor:
-- The overall progress and status.
-- A real-time graph of the model's **Loss** (how wrong it is) and **Learning Rate**.
-- A second graph showing the model's **Accuracy** on the validation set.
+Click **"Start Training"** and monitor the live dashboards as your model learns.
 
-You can stop the process at any time by clicking **"Stop Training"**.
+### Step 3: Prune and Fine-Tune Your Trained Model
+Once a run is complete, a **"Prune & Fine-Tune"** button will appear on its card.
+1.  Click it to open the Pruning Modal.
+2.  Use the **"Target Sparsity"** slider to choose what percentage of the model's weights you want to remove. Watch how the total parameter count decreases.
+3.  Click **"Start Fine-Tuning"**. The app will create the new sparse model and run a short, automated fine-tuning process. A new "Pruned Model" card will appear in the comparison list.
 
-### Step 3: Analyze and Compare Runs
-After a training run is complete (or stopped), it moves to the **"Comparison Runs"** section. The dashboard for the completed run will show its final accuracy and configuration. You can train new models with different settings, and they will stack up here, allowing you to easily compare which architectures or hyperparameters worked best.
+### Step 4: Analyze and Compare Runs
+You can now compare your runs side-by-side. A great experiment is to compare:
+1.  A "Simple" model trained from scratch.
+2.  A "Wide" model trained from scratch.
+3.  The pruned version of the "Wide" model, with a final parameter count similar to the "Simple" one.
 
-### Step 4: Test Your Model
-On each completed run's card, you'll find a **"Test This Model"** button. Clicking this opens the **"Test Your Model"** panel.
+Observe which model achieves the highest accuracy for a given parameter budget.
 
-- **Draw Digits Mode:** Use your mouse or finger to draw digits in the 10 canvases provided. When you click **"Predict All Digits"**, the model will analyze your drawings and display its predictions.
-- **Test on MNIST Images Mode:** Switch to this mode to use a gallery of real, unseen test images from the MNIST dataset. Drag images from the gallery and drop them into the slots. The model will predict what they are, and you can see if it was correct by comparing its guess to the actual label.
-
-### Step 5: Visualize the Internals
-The **"Visualize Model"** button on a completed run opens a full-screen modal for deep inspection.
-- **Layer Weight Heatmaps:** This view shows heatmaps of the learned weights in each layer. For the first dense layer, you can see how each neuron has learned to respond to different pixel patterns. For CNNs, you can see the convolutional filters.
-- **Live Activation Viewer:** Here, you can draw a digit and click "See Activation Flow" to watch a diagram of the network light up, showing how neurons are activated as the data passes from the input layer to the final prediction.
+### Step 5: Test and Visualize
+Use the **"Test This Model"** and **"Visualize Model"** buttons on any completed run—including your new pruned ones—to see how they perform and what their internal structure looks like.
 
 ### Step 6: Manage Your Model
-You can save a model you're happy with using the **"Save Model"** button in the testing panel. If a saved model exists, a new card will appear on the left, allowing you to **Load** it for testing or **Delete** it. You can also **Download** the model's files (`model.json` and `weights.bin`) for use in other TensorFlow.js projects.
+Save, load, or download any model you're happy with, including your highly efficient pruned models.
 
-## 4. How MNIST Data is Handled on the Web
+## 5. How MNIST Data is Handled on the Web
 
-A significant technical hurdle in this project is efficiently loading the large MNIST dataset (tens of thousands of images) into the browser. Simply including the image files in the application is not feasible, and downloading thousands of individual image files would be extremely slow.
+A significant technical hurdle in web-based machine learning is reliably loading the large MNIST dataset. Previous versions of this app fetched the data from external servers, which led to intermittent "Failed to fetch" errors due to network issues.
 
-To solve this, this application uses a technique called **sprite sheeting**, which is common in graphics and game development. The entire dataset of 65,000 images (55,000 for training, 10,000 for testing) is combined into a single, large PNG image file called a sprite sheet. The labels for these images are stored in a separate, compact binary file.
+To solve this permanently, the application now uses a more robust, self-contained approach.
 
-The data loading process is handled by the `services/mnistData.ts` service, which performs the following steps:
-1.  **Fetches Data:** The service downloads the image sprite sheet and the binary labels file from the official Google Cloud Storage source used by the TensorFlow.js team. This source is highly reliable and correctly configured for direct use in web applications.
-2.  **Image Parsing:** Once the sprite sheet PNG is downloaded, it's drawn onto a hidden `<canvas>` element. This is a critical step that gives us raw pixel-level access to the image data.
-3.  **Pixel Extraction:** The service reads the pixel data from the canvas. Since the images are grayscale, it only needs one color channel (e.g., red) to get the value of each pixel. It iterates through the entire sprite sheet, extracting the 784 pixels (28x28) for each of the 65,000 digits.
-4.  **Label Parsing:** The compact binary file containing the 65,000 labels is read into an array.
-5.  **Tensor Creation:** The raw pixel and label data are then split into training and testing sets. Finally, this data is converted into the `tf.Tensor` objects that TensorFlow.js needs for training and evaluation.
+1.  **Embedded Data Source:** Instead of fetching from a URL, the application now has the locations of the dataset files embedded directly in its code. This points to the same reliable Google Cloud Storage source used by official TensorFlow.js examples.
+2.  **Efficient Loading:** The app downloads a single large PNG image file (a "sprite sheet") containing all 65,000 digits and a compact binary file for the labels.
+3.  **In-Browser Processing:** The sprite sheet is drawn to a hidden canvas, where the individual 28x28 pixel digits are extracted. This data is then converted into `tf.Tensor` objects for training.
 
-This sprite sheet approach is highly efficient for web-based machine learning. It minimizes network requests and leverages the browser's powerful, native image decoding and canvas APIs to quickly prepare a large dataset for the model, ensuring the application starts up fast and runs smoothly.
+This method minimizes network requests and leverages the browser's powerful image processing capabilities. By pointing to a stable, canonical data source, it ensures the application is significantly more reliable and resilient to the network problems that were causing failures before.
 
-## 5. Resolution Note: Correcting MNIST Label Parsing
+## 6. Resolution Note: Correcting MNIST Label Parsing
 
 This section documents the resolution of a previous critical bug related to the "Test on MNIST Images" feature.
 
@@ -93,7 +102,7 @@ The original code was written with the assumption that the file contained simple
 
 This change has resolved the issue, and the "Test on MNIST Images" feature now functions as intended, providing accurate ground-truth labels for model validation.
 
-## 6. Resolution Note: Fixing a TensorFlow.js Type Mismatch
+## 7. Resolution Note: Fixing a TensorFlow.js Type Mismatch
 
 This note documents the resolution of a data loading failure caused by a subtle type incompatibility within the TensorFlow.js library.
 
@@ -112,7 +121,7 @@ The error occurred because the code was passing the raw `Uint32Array` from the u
 
 The fix, implemented in `services/mnistData.ts`, was to explicitly convert the shuffled indices array into the correct format before the `gather` operation. A new `Int32Array` is created from the `Uint32Array`, and then a `tf.tensor1d` of type `'int32'` is created from that. This ensures that `tf.gather` receives a tensor of the precise type it expects, resolving the error and allowing the data shuffling process to complete successfully.
 
-## 7. Resolution Note: Ensuring Robust Validation by Separating Test Data
+## 8. Resolution Note: Ensuring Robust Validation by Separating Test Data
 
 This note documents a critical improvement to the model training and validation process to guarantee that accuracy is measured on a truly independent dataset, eliminating any possibility of data leakage.
 
@@ -129,7 +138,7 @@ To provide a more rigorous and trustworthy measure of the model's ability to gen
 
 This change ensures that the validation accuracy reported during training is a true reflection of the model's performance on data it has never seen before, as the test set is collected and curated separately from the training set. This is the standard practice for academic benchmarks and provides the user with a much more reliable metric for comparing different model configurations. The interactive test panel in the UI also uses this same 10,000-image test set, providing consistency between the reported validation accuracy and the user's hands-on testing experience.
 
-## 8. Resolution Note: Improving Drawn Digit Pre-Processing
+## 9. Resolution Note: Improving Drawn Digit Pre-Processing
 
 This note details an enhancement to the image processing pipeline for user-drawn digits to improve model accuracy.
 
@@ -144,3 +153,19 @@ The investigation focused on the image processing steps in `components/DrawingCa
 An earlier version of the app used a `3px` Gaussian blur, which was found to be too aggressive, washing out important features. The blur was then removed entirely, relying only on the browser's scaling algorithm for smoothing. However, this produced images that were too sharp compared to the training data.
 
 The fix was to **re-introduce a more subtle `2px` Gaussian blur**. This value strikes a balance, softening the hard edges of the user's drawing without destroying key features like corners and endpoints. This blur is applied to the 28x28 scaled-down image before it is centered and fed to the model. This change ensures the input from the drawing canvas more closely matches the "fuzziness" of the MNIST training set, leading to more reliable and accurate predictions.
+
+## 10. Unresolved Issue: Model Pruning Failures
+
+This section documents a known, unresolved issue with the "Prune & Fine-Tune" feature.
+
+### The Problem
+
+The pruning feature is currently non-functional and results in a "Pruning failed" error. The error message, `"Cannot read properties of undefined (reading 'length')"`, indicates that the application is failing to correctly reconstruct the model's architecture after the pruning calculations are complete.
+
+### Root Cause Analysis
+
+The core of the issue is that the application cannot reliably retrieve the **input shape** from a model that has already been trained. To create a new, pruned model, a copy of the original model's architecture must be built. This requires knowing the exact shape of the data the model expects (e.g., `[784]` for a flattened MNIST image).
+
+Even though the model was successfully trained (which implies its input shape was known), this information appears to be unavailable or lost when the model object is later accessed by the pruning function. The application uses the standard, documented method (`model.inputs[0].shape`) to retrieve this information, but it is unexpectedly returning `undefined`.
+
+This is a subtle issue related to the internal state of TensorFlow.js model objects. We are actively investigating the root cause and consulting resources to find a robust solution. Until resolved, the pruning feature remains disabled.

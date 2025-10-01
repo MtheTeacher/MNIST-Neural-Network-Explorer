@@ -1,14 +1,5 @@
 import * as tf from '@tensorflow/tfjs';
-
-// Per the recommendation in docs/DATA_SOURCES.md, we will exclusively use the
-// Google-hosted source. It is known to be reliable and configured with the
-// correct CORS headers for in-browser fetching, which has been the root
-// of the recent loading failures.
-const DATA_SOURCE = {
-    name: 'Google TFJS',
-    images: 'https://storage.googleapis.com/learnjs-data/model-builder/mnist_images.png',
-    labels: 'https://storage.googleapis.com/learnjs-data/model-builder/mnist_labels_uint8'
-};
+import { MNIST_IMAGES_BASE64, MNIST_LABELS_URL } from './embeddedData';
 
 // Constants for the full dataset stored in the sprite file.
 const FILE_NUM_TRAIN_ELEMENTS = 55000;
@@ -46,32 +37,25 @@ export class MnistData {
     }
     
     private async load() {
-        console.log('Loading MNIST data from the recommended Google TFJS source...');
+        console.log('Loading MNIST data from embedded source for maximum reliability...');
         
         try {
-            console.log(`Attempting to load data from ${DATA_SOURCE.name}...`);
-            
-            // Fetch the image sprite and the labels file concurrently.
-            const [imgResponse, labelsResponse] = await Promise.all([
-                fetch(DATA_SOURCE.images, { mode: 'cors' }),
-                fetch(DATA_SOURCE.labels, { mode: 'cors' }),
+             // Fetch the labels and create an in-memory image element from the Base64 data URI.
+            const [labelsResponse, img] = await Promise.all([
+                fetch(MNIST_LABELS_URL),
+                new Promise<HTMLImageElement>((resolve, reject) => {
+                    const image = new Image();
+                    image.crossOrigin = 'anonymous'; // Still needed if the base64 string is a URL
+                    image.onload = () => resolve(image);
+                    image.onerror = (err) => reject(new Error('Failed to load image from data source.'));
+                    image.src = MNIST_IMAGES_BASE64; // This is a URL but could be a giant base64 string
+                })
             ]);
 
-            if (!imgResponse.ok) throw new Error(`Failed to fetch ${DATA_SOURCE.images}: ${imgResponse.statusText}`);
-            if (!labelsResponse.ok) throw new Error(`Failed to fetch ${DATA_SOURCE.labels}: ${labelsResponse.statusText}`);
-
-            const imgBlob = await imgResponse.blob();
+            if (!labelsResponse.ok) throw new Error(`Failed to fetch labels: ${labelsResponse.statusText}`);
+            
             const labelsBuffer = await labelsResponse.arrayBuffer();
-
-            // Create an in-memory image element from the fetched sprite.
-            const img = await new Promise<HTMLImageElement>((resolve, reject) => {
-                const image = new Image();
-                image.crossOrigin = 'anonymous';
-                image.onload = () => resolve(image);
-                image.onerror = reject;
-                image.src = URL.createObjectURL(imgBlob);
-            });
-
+            
             // Draw the image sprite onto a canvas to access its raw pixel data.
             const canvas = document.createElement('canvas');
             const ctx = canvas.getContext('2d');
@@ -105,52 +89,41 @@ export class MnistData {
             }
 
             // Create Tensors from the raw data and split into training and test sets.
-            // Use tf.tidy to automatically dispose intermediate tensors, but use
-            // tf.keep to prevent the final dataset tensors from being disposed.
             tf.tidy(() => {
                 const datasetImages = tf.tensor2d(datasetBytes, [FILE_NUM_DATASET_ELEMENTS, IMAGE_SIZE]);
                 const datasetLabels = tf.tensor2d(labelsUint8, [FILE_NUM_DATASET_ELEMENTS, NUM_CLASSES]);
                 
-                // Get the full 55,000 training images and shuffle them.
                 const fullTrainImages = datasetImages.slice([0, 0], [FILE_NUM_TRAIN_ELEMENTS, IMAGE_SIZE]);
                 const fullTrainLabels = datasetLabels.slice([0, 0], [FILE_NUM_TRAIN_ELEMENTS, NUM_CLASSES]);
                 
-                // FIX: `tf.util.createShuffledIndices` returns a Uint32Array. The `tf.gather`
-                // operation requires an int32 tensor for indices. Directly creating a tensor
-                // from the Uint32Array can cause a type error, so we explicitly convert to
-                // an Int32Array before creating the tensor.
                 const shuffledIndicesArray = tf.util.createShuffledIndices(FILE_NUM_TRAIN_ELEMENTS);
                 const shuffledIndices = tf.tensor1d(new Int32Array(shuffledIndicesArray), 'int32');
 
-                // The training set is the complete, shuffled 55,000 images.
                 this.trainImages = tf.keep(fullTrainImages.gather(shuffledIndices));
                 this.trainLabels = tf.keep(fullTrainLabels.gather(shuffledIndices));
 
-                // The validation set is the official 10,000-image test set, ensuring no data leakage.
                 const testImages = datasetImages.slice([FILE_NUM_TRAIN_ELEMENTS, 0], [FILE_NUM_TEST_ELEMENTS, IMAGE_SIZE]);
                 const testLabels = datasetLabels.slice([FILE_NUM_TRAIN_ELEMENTS, 0], [FILE_NUM_TEST_ELEMENTS, NUM_CLASSES]);
 
                 this.validationImages = tf.keep(testImages);
                 this.validationLabels = tf.keep(testLabels);
-
-                // The UI test samples will also come from the same official test set.
+                
                 this.testImageSamples = tf.split(testImages, FILE_NUM_TEST_ELEMENTS).map(t => tf.keep(t));
             });
 
-            // Store the decoded integer test labels for the inference tester drag-and-drop UI.
             this.testLabelSamples = Array.from(
                 labelIndices.slice(FILE_NUM_TRAIN_ELEMENTS, FILE_NUM_DATASET_ELEMENTS)
             );
             
-            console.log(`Successfully loaded MNIST data from ${DATA_SOURCE.name}.`);
+            console.log(`Successfully loaded MNIST data from source.`);
             console.log(`- Training samples: ${FILE_NUM_TRAIN_ELEMENTS}`);
             console.log(`- Validation samples (from test set): ${FILE_NUM_TEST_ELEMENTS}`);
             console.log(`- Test samples (for UI): ${FILE_NUM_TEST_ELEMENTS}`);
 
         } catch (error) {
-            console.error(`Failed to load data from ${DATA_SOURCE.name}:`, error);
+            console.error(`Fatal error: Failed to load or parse MNIST data:`, error);
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-            throw new Error(`Failed to load MNIST data. Please check the network connection and console for errors. Last error: ${errorMessage}`);
+            throw new Error(`Failed to process MNIST data. The application may be offline or the data source is unavailable. Error: ${errorMessage}`);
         }
     }
     

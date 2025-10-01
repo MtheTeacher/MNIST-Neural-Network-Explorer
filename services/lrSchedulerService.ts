@@ -32,6 +32,14 @@ export function getLearningRate(
             const cosDecay = 0.5 * (1 + Math.cos(Math.PI * epoch / decayEpochs));
             return minLr + (initialLr - minLr) * cosDecay;
         }
+        
+        case 'cosine-restarts': {
+            const numRestarts = 3;
+            const cycleLength = Math.ceil(totalEpochs / numRestarts);
+            const currentEpochInCycle = epoch % cycleLength;
+            const cosDecay = 0.5 * (1 + Math.cos(Math.PI * currentEpochInCycle / cycleLength));
+            return minLr + (initialLr - minLr) * cosDecay;
+        }
 
         case 'warmup-cosine': {
             const warmupEpochs = Math.max(1, Math.floor(totalEpochs * 0.1));

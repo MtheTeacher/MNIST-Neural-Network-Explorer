@@ -1,4 +1,3 @@
-
 import React from 'react';
 import type { ModelConfig, LayerConfig } from '../types';
 import { PlayIcon, StopIcon, PlusIcon, XIcon, LayersIcon, InfoIcon } from '../constants';
@@ -66,6 +65,7 @@ export const TrainingConfigurator: React.FC<TrainingConfiguratorProps> = ({ conf
                 learningRate: 0.001,
                 epochs: 15,
                 batchSize: 128,
+                dropoutRate: 0, // Dropout is not applied to this CNN preset
             }));
             return;
         }
@@ -203,6 +203,25 @@ export const TrainingConfigurator: React.FC<TrainingConfiguratorProps> = ({ conf
                         disabled={isTraining}
                     />
                 </div>
+            </div>
+
+            {/* Regularization */}
+            <div>
+                <Label htmlFor="dropoutRate" tooltip="Fraction of neurons to randomly drop during training to prevent overfitting.">
+                    Dropout Rate: {config.dropoutRate.toFixed(2)}
+                </Label>
+                <input
+                    id="dropoutRate"
+                    type="range"
+                    min="0"
+                    max="0.75"
+                    step="0.05"
+                    value={config.dropoutRate}
+                    onChange={(e) => setConfig(prev => ({ ...prev, dropoutRate: parseFloat(e.target.value) }))}
+                    className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer range-thumb-cyan"
+                    disabled={isTraining || config.architecture === 'cnn'}
+                />
+                 {config.architecture === 'cnn' && <p className="text-xs text-gray-400 mt-1">Dropout is disabled for the CNN preset.</p>}
             </div>
             
             <div className="grid grid-cols-2 gap-4">

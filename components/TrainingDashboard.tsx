@@ -1,45 +1,70 @@
-
 import React from 'react';
-import type { TrainingLog, ModelConfig, ModelInfo } from '../types';
+import type { TrainingLog, ModelConfig, ModelInfo, PruningInfo } from '../types';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { LEARNING_RATE_SCHEDULES } from '../constants';
-import { RocketIcon, EyeIcon, InfoIcon, ChevronDownIcon } from '../constants';
+import { RocketIcon, EyeIcon, InfoIcon, ChevronDownIcon, CutIcon } from '../constants';
+
+interface TrainingRun {
+    id: number;
+    config: ModelConfig;
+    log: TrainingLog[];
+    modelInfo: ModelInfo | null;
+    pruning?: PruningInfo;
+}
 
 interface TrainingDashboardProps {
-    trainingLog: TrainingLog[];
     isLive: boolean;
-    status: string;
-    config: ModelConfig;
-    modelInfo: ModelInfo | null;
+    status?: string;
+    // Props for live run
+    trainingLog?: TrainingLog[];
+    config?: ModelConfig;
+    modelInfo?: ModelInfo | null;
+    // Props for completed run
+    run?: TrainingRun;
     onTestModel?: () => void;
     onVisualizeModel?: () => void;
+    onPruneModel?: (run: TrainingRun) => void;
     isModelInTest?: boolean;
 }
 
 const getScheduleName = (id: string) => LEARNING_RATE_SCHEDULES.find(s => s.id === id)?.name || 'Unknown';
 
-export const TrainingDashboard: React.FC<TrainingDashboardProps> = ({ trainingLog, isLive, status, config, modelInfo, onTestModel, onVisualizeModel, isModelInTest }) => {
+export const TrainingDashboard: React.FC<TrainingDashboardProps> = (props) => {
+    const { isLive, status, onTestModel, onVisualizeModel, onPruneModel, isModelInTest } = props;
+    
+    // Consolidate props for live vs completed runs
+    const runData = isLive
+        ? { log: props.trainingLog!, config: props.config!, modelInfo: props.modelInfo, pruning: undefined }
+        : { log: props.run!.log, config: props.run!.config, modelInfo: props.run!.modelInfo, pruning: props.run!.pruning };
+    
+    const { log: trainingLog, config, modelInfo, pruning } = runData;
+
     const progress = trainingLog.length > 0 ? (trainingLog[trainingLog.length - 1].epoch / config.epochs) * 100 : (isLive ? 0 : 100);
     
     const lastLog = !isLive && trainingLog.length > 0 ? trainingLog[trainingLog.length - 1] : null;
     const finalAccuracy = lastLog ? (lastLog.val_accuracy ?? lastLog.accuracy) : null;
     const hasValidationData = lastLog && lastLog.val_accuracy !== undefined;
-
+    
+    const title = pruning
+        ? `Pruned Model (${(pruning.sparsity * 100).toFixed(0)}% sparse)`
+        : (modelInfo?.name || (isLive ? "Live Training" : "Completed Run"));
 
     return (
         <div className={`bg-white/10 border rounded-2xl p-6 shadow-2xl transition-all duration-300 ${isLive ? 'border-cyan-400/50' : 'border-white/20'}`}>
             <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 mb-4">
                 <div>
-                    <h2 className="text-xl font-bold text-white">{modelInfo?.name || (isLive ? "Live Training" : "Completed Run")}</h2>
+                    <h2 className="text-xl font-bold text-white">{title}</h2>
                     <div className="text-xs text-gray-300 flex flex-wrap gap-x-3 gap-y-1 mt-1">
                         <span>Arch: <span className="font-semibold text-gray-200">{config.architecture.toUpperCase()}</span></span>
                         <span>LR Schedule: <span className="font-semibold text-gray-200">{getScheduleName(config.lrSchedule)}</span></span>
                         <span>Initial LR: <span className="font-semibold text-gray-200">{config.learningRate}</span></span>
                         <span>Epochs: <span className="font-semibold text-gray-200">{config.epochs}</span></span>
+                        {config.dropoutRate > 0 && <span>Dropout: <span className="font-semibold text-gray-200">{config.dropoutRate}</span></span>}
                         {modelInfo && <span>Params: <span className="font-semibold text-gray-200">{modelInfo.totalParams.toLocaleString()}</span></span>}
+                        {pruning && <span>Sparsity: <span className="font-semibold text-gray-200">{(pruning.sparsity * 100).toFixed(0)}%</span></span>}
                     </div>
                 </div>
-                {!isLive && (onTestModel || onVisualizeModel) && (
+                {!isLive && (
                      <div className="flex flex-col sm:flex-row gap-2">
                         {onTestModel && (
                             <button
@@ -47,7 +72,7 @@ export const TrainingDashboard: React.FC<TrainingDashboardProps> = ({ trainingLo
                                 className={`font-bold py-2 px-4 rounded-full flex items-center justify-center space-x-2 transition-all duration-300 transform hover:scale-105 text-sm ${isModelInTest ? 'bg-pink-500 text-white' : 'bg-white/20 hover:bg-white/30 text-white'}`}
                             >
                                 <RocketIcon className="w-4 h-4"/>
-                                <span>{isModelInTest ? 'Currently Testing' : 'Test This Model'}</span>
+                                <span>{isModelInTest ? 'Currently Testing' : 'Test Model'}</span>
                             </button>
                         )}
                         {onVisualizeModel && (
@@ -56,7 +81,16 @@ export const TrainingDashboard: React.FC<TrainingDashboardProps> = ({ trainingLo
                                 className="font-bold py-2 px-4 rounded-full flex items-center justify-center space-x-2 transition-all duration-300 transform hover:scale-105 text-sm bg-white/20 hover:bg-white/30 text-white"
                             >
                                 <EyeIcon className="w-4 h-4"/>
-                                <span>Visualize Model</span>
+                                <span>Visualize</span>
+                            </button>
+                        )}
+                        {onPruneModel && config.architecture === 'dense' && (
+                             <button
+                                onClick={() => onPruneModel(props.run!)}
+                                className="font-bold py-2 px-4 rounded-full flex items-center justify-center space-x-2 transition-all duration-300 transform hover:scale-105 text-sm bg-white/20 hover:bg-white/30 text-white"
+                            >
+                                <CutIcon className="w-4 h-4"/>
+                                <span>Prune & Fine-Tune</span>
                             </button>
                         )}
                     </div>
