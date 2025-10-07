@@ -180,3 +180,22 @@ A two-part fix was implemented to make the pruning pipeline robust against this 
 3.  **Corrected Memory Management:** A secondary bug was also fixed in `pruneModel`. The use of `tf.tidy()` was incorrect and caused the newly created pruned weight tensors to be disposed of before they could be set on the new model. The logic was corrected to use `tf.keep()` to explicitly preserve these tensors through the tidy scope, ensuring the final pruned model receives its weights correctly.
 
 By persisting the model's structural metadata before React can strip it and by using a more robust method for model reconstruction, the pruning pipeline is now stable and functions as intended.
+
+## 11. Troubleshooting Note: Resolving CORS and Module Loading Failures
+
+This note documents the resolution of a critical loading failure that prevented the application from starting, caused by Cross-Origin Resource Sharing (CORS) errors.
+
+### The Issue
+
+The application would fail to load entirely, with browser developer tools showing numerous CORS errors. These errors indicated that requests for core JavaScript modules (like React, ReactDOM, and TensorFlow.js) were being blocked because they were being fetched from a different origin (`https://aistudiocdn.com`) than the one serving the application, and the remote server did not permit this.
+
+### Root Cause and Resolution
+
+The root cause was an `<script type="importmap">` block in `index.html`. This "import map" was instructing the browser to ignore the locally bundled versions of dependencies and instead fetch them directly from an external Content Delivery Network (CDN). While useful in some contexts, this created a cross-origin conflict within the development environment.
+
+The solution was to **remove the entire `<script type="importmap">` block from `index.html`**. This allows the Vite build tool to function as intended:
+1.  Vite analyzes the `import` statements in the TypeScript/JavaScript code.
+2.  It finds the required packages (React, TensorFlow.js, etc.) in the local `node_modules` directory.
+3.  It bundles these dependencies and serves them from the same origin as the application itself.
+
+By letting Vite manage the dependencies, all cross-origin requests for these modules are eliminated, resolving the CORS errors and allowing the application to load correctly. This change makes the application more robust, self-contained, and aligned with modern web development best practices.
