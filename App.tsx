@@ -457,7 +457,7 @@ const App: React.FC = () => {
             <div className="text-center">
                 <h2 className="text-3xl font-bold mb-2 bg-clip-text text-transparent bg-gradient-to-r from-teal-400 to-sky-500">Interactive Gradient Descent</h2>
                 <p className="text-gray-300 max-w-3xl">
-                    Explore how an optimizer finds the minimum of a complex loss function. The ball represents the model's parameters, and it follows the slope (gradient) of the "wavescape" to find the lowest point. Adjust the learning rate, momentum, and schedule to see how they affect its path.
+                    Explore advanced optimization techniques in a visual sandbox. The ball navigates a complex, procedurally generated loss landscape full of hills, valleys, and saddle points, trying to find the lowest point. Each time you press "New Landscape," a unique challenge is created. Go beyond simple gradient descent: switch to the powerful Adam optimizer, use the "Continuation" method to smooth the landscape, and add thermal noise with Langevin Dynamics to escape local minima. Experiment with these powerful tools to see how modern optimizers conquer challenging problems.
                 </p>
             </div>
             <WaveScape />
