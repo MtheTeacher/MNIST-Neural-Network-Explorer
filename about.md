@@ -199,3 +199,19 @@ The solution was to **remove the entire `<script type="importmap">` block from `
 3.  It bundles these dependencies and serves them from the same origin as the application itself.
 
 By letting Vite manage the dependencies, all cross-origin requests for these modules are eliminated, resolving the CORS errors and allowing the application to load correctly. This change makes the application more robust, self-contained, and aligned with modern web development best practices.
+
+## 12. Resolution Note: Re-addressing CORS Loading Failures
+
+This note documents the resolution of a critical application loading failure.
+
+### The Issue
+
+The application failed to start, presenting a large number of Cross-Origin Resource Sharing (CORS) errors in the browser's developer console. The errors indicated that the browser was blocked from fetching essential JavaScript libraries like TensorFlow.js from an external CDN (`https://aistudiocdn.com`) because the server did not provide the necessary `Access-Control-Allow-Origin` header.
+
+### Root Cause and Resolution
+
+The investigation confirmed that the root cause was an `<script type="importmap">` tag within `index.html`. This tag overrode the standard module resolution process, forcing the browser to fetch dependencies from an external, cross-origin source, which triggered the browser's security policies.
+
+This issue was previously identified and documented (see Section 11). The re-emergence of the problem indicates that the problematic `importmap` was re-introduced into `index.html`.
+
+The fix, consistent with the previous resolution, was to **remove the entire `<script type="importmap">` block from `index.html`**. This action restores the default behavior, allowing the local development server and build tool (Vite) to bundle all necessary dependencies and serve them from the same origin as the application. This completely eliminates the cross-origin requests and resolves the CORS errors, allowing the application to load and function correctly.
