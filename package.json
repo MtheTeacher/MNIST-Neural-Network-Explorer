@@ -9,9 +9,9 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "react": "^19.2.0",
+    "recharts": "^3.4.1",
     "react-dom": "^19.2.0",
-    "recharts": "^3.3.0",
+    "react": "^19.2.0",
     "@tensorflow/tfjs": "^4.22.0"
   },
   "devDependencies": {

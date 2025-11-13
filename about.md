@@ -187,7 +187,7 @@ This note documents the resolution of a critical loading failure that prevented 
 
 ### The Issue
 
-The application would fail to load entirely, with browser developer tools showing numerous CORS errors. These errors indicated that requests for core JavaScript modules (like React, ReactDOM, and TensorFlow.js) were being blocked because they were being fetched from a different origin (`https://aistudiocdn.com`) than the one serving the application, and the remote server did not permit this.
+The application would fail to load entirely, with browser developer tools showing numerous CORS errors. These errors indicated that requests for core JavaScript modules (like React, ReactDOM, and TensorFlow.js) were being fetched from a different origin (`https://aistudiocdn.com`) than the one serving the application, and the remote server did not permit this.
 
 ### Root Cause and Resolution
 
@@ -215,3 +215,19 @@ The investigation confirmed that the root cause was an `<script type="importmap"
 This issue was previously identified and documented (see Section 11). The re-emergence of the problem indicates that the problematic `importmap` was re-introduced into `index.html`.
 
 The fix, consistent with the previous resolution, was to **remove the entire `<script type="importmap">` block from `index.html`**. This action restores the default behavior, allowing the local development server and build tool (Vite) to bundle all necessary dependencies and serve them from the same origin as the application. This completely eliminates the cross-origin requests and resolves the CORS errors, allowing the application to load and function correctly.
+
+## 13. Resolution Note: Third Resolution of CORS Loading Failures
+
+This note documents the resolution of a recurring critical application loading failure.
+
+### The Issue
+
+For the third time, the application failed to start, with the browser's developer console showing a cascade of `net::ERR_FAILED` and CORS (Cross-Origin Resource Sharing) errors. These errors confirmed that the browser was being blocked from fetching essential JavaScript libraries (React, TensorFlow.js, etc.) from an external CDN (`https://aistudiocdn.com`).
+
+### Root Cause and Resolution
+
+As documented in Sections 11 and 12, the root cause was the re-introduction of an `<script type="importmap">` tag in `index.html`. This tag forces the browser to fetch dependencies from an external, cross-origin source, which is blocked by browser security policies in this environment.
+
+The re-emergence of this issue suggests a problem in the development or deployment workflow that is re-introducing this problematic configuration.
+
+The fix, consistent with previous resolutions, was to once again **remove the entire `<script type="importmap">` block from `index.html`**. This action ensures that the local development server (Vite) correctly bundles all dependencies and serves them from the same origin as the application, eliminating the CORS errors and allowing the application to load. This change is critical for application stability and self-containment.
