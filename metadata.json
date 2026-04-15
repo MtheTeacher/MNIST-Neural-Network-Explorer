@@ -1,5 +1,7 @@
 {
   "name": "MNIST Neural Network Explorer",
   "description": "An interactive application for students to build, train, and test a neural network on the MNIST handwritten digit dataset. Configure network architecture, visualize training in real-time, and test your model on your own handwriting.",
-  "requestFramePermissions": []
+  "requestFramePermissions": [],
+  "C7": [],
+  "aq": []
 }

@@ -1,29 +1,23 @@
+
 # About the MNIST Neural Network Explorer
 
-... (previous sections) ...
+## Overview
+An interactive web application for learning neural networks using the MNIST dataset.
 
-## 14. Resolution Note: Comprehensive Infrastructure Overhaul for Cross-Device Reliability
+## Core Features
+- Custom Dense and CNN architecture configuration.
+- Real-time training visualization with Recharts.
+- Magnitude-based model pruning and fine-tuning.
+- Interactive gradient descent sandbox (WaveScape).
+
+## Resolution Note: Live Dashboard & Chart Visibility (v2.1)
 
 ### The Issue
-The app was intermittently failing to load, particularly on mobile devices, with 404 errors for `index.tsx` and 404 errors for internal dependency chunks from the AI Studio CDN.
-
-### Root Cause
-1. **Absolute Paths**: The entry point was defined with a leading slash, which breaks when the app is not at the domain root.
-2. **CDN Chunking**: The previous CDN provider had health issues serving sub-modules.
-3. **Mobile Compatibility**: Lack of Import Map support in older mobile browsers.
+Graphs were not appearing immediately or were perceived as missing during the active training phase. Metrics for training and validation sets were also appearing identical.
 
 ### The Fix
-1. **Relative Script Loading**: Changed `/index.tsx` to `index.tsx`.
-2. **Standardized CDN**: Switched to `esm.sh` for all major dependencies to ensure consistent chunk delivery.
-3. **Mobile Shim**: Integrated `es-module-shims` to polyfill Import Map support for students using older smartphones.
-4. **Reliability Plan**: Created `RELIABILITY_PLAN.md` to document ongoing maintenance for cross-device support.
-
-## 15. Resolution Note: Laptop-First Optimization & Bundle Cleanup
-
-### The Goal
-Prioritize reliability and performance for modern laptop environments, simplifying the initialization process.
-
-### The Changes
-1. **Shim Removal**: Removed `es-module-shims.js`. While useful for legacy mobile support, it adds a layer of complexity and potential boot-up lag that is unnecessary for modern desktop browsers.
-2. **Path Hardening**: Reinforced relative pathing for the `index.tsx` entry point.
-3. **Plan Update**: Formally established the `RELIABILITY_PLAN.md` as a living document to guide future infrastructure decisions.
+1. **State Eagerness**: `setIsTraining` is now triggered immediately upon the "Start Training" click, ensuring the `TrainingDashboard` component is mounted before any async model preparation.
+2. **Axis Pre-rendering**: Updated Recharts configurations in `TrainingDashboard` to render axes even with empty data arrays. This provides a visual "staging area" for the incoming data.
+3. **Smooth State Transfers**: Transitioned the training log updates to use functional state updates and reference cloning (`[...]`) to ensure React consistently detects and renders the data arriving from the TensorFlow.js worker thread.
+4. **Metric Integrity**: Explicitly split "Train Accuracy" and "Validation Accuracy" logic in the UI badges to provide a true reflection of the model's generalization capabilities.
+5. **UI Thread Yielding**: Implemented `requestAnimationFrame` yielding within the training loop to ensure chart re-renders are processed smoothly without blocking the background training.
