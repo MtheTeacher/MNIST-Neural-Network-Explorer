@@ -110,8 +110,9 @@ export async function trainModel(
     const appCallback = new tf.CustomCallback({
          onEpochEnd: async (epoch, logs) => {
             if (logs) {
-                 if (logs.val_acc) {
-                    valAccHistory.push(logs.val_acc as number);
+                const valAcc = logs.val_acc ?? logs.val_accuracy;
+                if (valAcc !== undefined) {
+                    valAccHistory.push(valAcc as number);
                 }
                 await onEpochEndCallback(epoch, logs, currentLr);
             }
@@ -217,7 +218,7 @@ export async function pruneModel(
         
         // This is CRITICAL: `tf.keep` prevents tidy() from disposing the tensors
         // that we need to return and set on the new model.
-        tf.keep(newPrunedWeights);
+        newPrunedWeights.forEach(t => tf.keep(t));
 
         return {prunedWeights: newPrunedWeights, actualSparsity: newActualSparsity};
     });

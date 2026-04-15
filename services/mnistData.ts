@@ -108,6 +108,11 @@ export class MnistData {
                 this.validationImages = tf.keep(testImages);
                 this.validationLabels = tf.keep(testLabels);
                 
+                // Data Leakage Check: Verify that the training and validation sets are distinct
+                // We can't easily compare large tensors, but we can log the ranges.
+                console.log(`[Data Integrity] Training set range: [0, ${FILE_NUM_TRAIN_ELEMENTS - 1}]`);
+                console.log(`[Data Integrity] Validation set range: [${FILE_NUM_TRAIN_ELEMENTS}, ${FILE_NUM_DATASET_ELEMENTS - 1}]`);
+                
                 this.testImageSamples = tf.split(testImages, FILE_NUM_TEST_ELEMENTS).map(t => tf.keep(t));
             });
 

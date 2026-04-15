@@ -99,29 +99,41 @@ const App: React.FC = () => {
             const { images: testImages, labels: testLabels } = data.getValidationData();
             
             setTrainingStatus('Starting training...');
-            await trainModel(
-                model,
-                trainImages,
-                trainLabels,
-                testImages,
-                testLabels,
-                configForRun,
-                async (epoch, logs, lr) => {
-                    if (stopTrainingRef.current && model) {
-                        model.stopTraining = true;
-                    }
-                    const newLogEntry: TrainingLog = {
-                        epoch: epoch + 1,
-                        loss: logs.loss,
-                        accuracy: (logs.acc ?? logs.accuracy) as number,
-                        val_loss: logs.val_loss as number,
-                        val_accuracy: (logs.val_acc ?? logs.val_accuracy) as number,
-                        lr
-                    };
-                    currentRunLog.push(newLogEntry);
+                    await trainModel(
+                        model,
+                        trainImages,
+                        trainLabels,
+                        testImages,
+                        testLabels,
+                        configForRun,
+                        async (epoch, logs, lr) => {
+                            if (stopTrainingRef.current && model) {
+                                model.stopTraining = true;
+                            }
+                            
+                            // Strict numeric normalization and sanitization
+                            const sanitize = (val: any) => {
+                                const num = Number(val);
+                                return isFinite(num) ? num : 0;
+                            };
 
-                    // Re-draw graphs after each epoch with fresh array reference
-                    setTrainingLog([...currentRunLog]);
+                            const newLogEntry: TrainingLog = {
+                                epoch: epoch + 1,
+                                loss: sanitize(logs.loss),
+                                accuracy: sanitize(logs.acc ?? logs.accuracy),
+                                val_loss: logs.val_loss !== undefined ? sanitize(logs.val_loss) : undefined,
+                                val_accuracy: (logs.val_acc !== undefined || logs.val_accuracy !== undefined) 
+                                    ? sanitize(logs.val_acc ?? logs.val_accuracy) 
+                                    : undefined,
+                                lr: sanitize(lr)
+                            };
+                            
+                            console.log(`[Epoch ${epoch + 1}] Training Log Entry:`, newLogEntry);
+                            
+                            currentRunLog.push(newLogEntry);
+
+                            // Re-draw graphs after each epoch with fresh array reference
+                            setTrainingLog([...currentRunLog]);
                     
                     // Allow UI thread to render. setTimeout(0) is often more reliable than rAF 
                     // for ensuring the browser actually processes the paint and event loop 
@@ -271,8 +283,8 @@ const App: React.FC = () => {
     const isIdle = !isTraining && trainingLog.length === 0 && completedRuns.length === 0;
 
     const renderMnistExplorer = () => (
-        <main className="w-full max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-8 mt-8">
-            <div className="lg:col-span-1 space-y-8">
+        <main className="w-full max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-8 mt-8 min-w-0">
+            <div className="lg:col-span-1 space-y-8 min-w-0">
                 <TrainingConfigurator 
                     config={config} 
                     setConfig={setConfig} 
@@ -282,7 +294,7 @@ const App: React.FC = () => {
                     onShowInfo={handleShowInfo}
                 />
                 {savedModelExists && (
-                     <div className="bg-white/10 border border-white/20 rounded-2xl p-6 space-y-4 shadow-2xl">
+                     <div className="bg-white/10 border border-white/20 rounded-2xl p-6 space-y-4 shadow-2xl min-w-0">
                         <h2 className="text-xl font-bold text-white">Manage Saved Model</h2>
                         <div className="flex flex-col sm:flex-row gap-4">
                             <button onClick={handleLoadModel} disabled={isTraining} className="flex-1 bg-gradient-to-r from-green-500 to-emerald-500 text-white font-bold py-2 px-4 rounded-full flex items-center justify-center space-x-2 transition-all transform hover:scale-105 disabled:opacity-50">
@@ -295,7 +307,7 @@ const App: React.FC = () => {
                     </div>
                 )}
             </div>
-            <div className="lg:col-span-2 space-y-8">
+            <div className="lg:col-span-2 space-y-8 min-w-0">
                 {isIdle ? (
                     <div className="bg-white/10 border border-white/20 rounded-2xl p-8 h-full flex flex-col justify-center items-center text-center shadow-2xl">
                         <BrainCircuitIcon className="w-24 h-24 text-cyan-300 mb-6" />

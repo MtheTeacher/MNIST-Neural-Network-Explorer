@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import type { TrainingLog, ModelConfig, ModelInfo, PruningInfo } from '../types';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { LEARNING_RATE_SCHEDULES } from '../constants';
@@ -36,6 +36,25 @@ const getScheduleName = (id: string) => LEARNING_RATE_SCHEDULES.find(s => s.id =
 export const TrainingDashboard: React.FC<TrainingDashboardProps> = (props) => {
     const { isLive, status, onTestModel, onVisualizeModel, onPruneModel, isModelInTest, parentRun } = props;
     
+    const chart1Ref = useRef<HTMLDivElement>(null);
+    const chart2Ref = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        if (isLive) {
+            const logDimensions = (name: string, ref: React.RefObject<HTMLDivElement>) => {
+                if (ref.current) {
+                    const { width, height } = ref.current.getBoundingClientRect();
+                    console.log(`[Chart Instrumentation] ${name} dimensions:`, { width, height });
+                    if (width === 0 || height === 0) {
+                        console.warn(`[Chart Warning] ${name} has zero dimension! Recharts may fail to render.`);
+                    }
+                }
+            };
+            logDimensions('Performance Chart', chart1Ref);
+            logDimensions('Accuracy Chart', chart2Ref);
+        }
+    }, [isLive, props.trainingLog?.length]);
+
     // Consolidate data references
     const runData = isLive
         ? { log: props.trainingLog ?? [], config: props.config!, modelInfo: props.modelInfo, pruning: undefined }
@@ -123,10 +142,10 @@ export const TrainingDashboard: React.FC<TrainingDashboardProps> = (props) => {
                 </div>
             </div>
 
-            <div className="flex flex-col gap-8">
-                <div className="bg-black/30 p-4 rounded-xl border border-white/5">
+            <div className="flex flex-col gap-8 min-w-0">
+                <div className="bg-black/30 p-4 rounded-xl border border-white/5 min-w-0">
                     <h3 className="text-sm font-bold text-gray-400 uppercase tracking-widest mb-4 text-center">Performance / LR</h3>
-                    <div className="h-[350px] w-full relative" style={{ minHeight: '350px' }}>
+                    <div ref={chart1Ref} className="h-[350px] w-full relative min-w-0" style={{ height: 350, width: '100%', minWidth: 0 }}>
                         <ResponsiveContainer width="100%" height="100%" minWidth={0}>
                             <LineChart data={trainingLog} margin={{ top: 5, right: 10, left: -10, bottom: 5 }}>
                                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(255, 255, 255, 0.05)" vertical={false} />
@@ -157,9 +176,9 @@ export const TrainingDashboard: React.FC<TrainingDashboardProps> = (props) => {
                     </div>
                 </div>
 
-                <div className="bg-black/30 p-4 rounded-xl border border-white/5">
+                <div className="bg-black/30 p-4 rounded-xl border border-white/5 min-w-0">
                     <h3 className="text-sm font-bold text-gray-400 uppercase tracking-widest mb-4 text-center">Accuracy History</h3>
-                    <div className="h-[350px] w-full relative" style={{ minHeight: '350px' }}>
+                    <div ref={chart2Ref} className="h-[350px] w-full relative min-w-0" style={{ height: 350, width: '100%', minWidth: 0 }}>
                         <ResponsiveContainer width="100%" height="100%" minWidth={0}>
                             <LineChart data={trainingLog} margin={{ top: 5, right: 10, left: -10, bottom: 5 }}>
                                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(255, 255, 255, 0.05)" vertical={false} />
