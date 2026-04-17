@@ -1,5 +1,13 @@
 
 import React, { useState, useCallback, useEffect, useRef } from 'react';
+
+/**
+ * RECHARTS DATA SANITIZATION NOTE:
+ * We use `sanitizeNaNToZero` before passing logs to Recharts components to prevent 
+ * silent failures and chart corruption.
+ * See `/docs/RECHARTS_GUIDE.md` for full charting documentation and best practices.
+ */
+
 import type * as tf from '@tensorflow/tfjs';
 import { TrainingConfigurator } from './components/TrainingConfigurator';
 import { TrainingDashboard } from './components/TrainingDashboard';

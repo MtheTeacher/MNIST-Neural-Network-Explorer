@@ -111,7 +111,7 @@ export async function trainModel(
          onEpochEnd: async (epoch, logs) => {
             if (logs) {
                 const valAcc = logs.val_acc ?? logs.val_accuracy;
-                if (valAcc !== undefined) {
+                if (valAcc !== undefined && !isNaN(valAcc as number)) {
                     valAccHistory.push(valAcc as number);
                 }
                 await onEpochEndCallback(epoch, logs, currentLr);

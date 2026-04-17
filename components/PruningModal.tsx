@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
 import type { ModelInfo, ModelConfig, TrainingLog, PruningInfo } from '../types';
 import { XIcon, CutIcon } from '../constants';
+import { useChartDimensions } from '../hooks/useChartDimensions';
 
 interface TrainingRun {
     id: number;
@@ -16,6 +17,15 @@ interface PruningModalProps {
     onClose: () => void;
     onStartFinetuning: (run: TrainingRun, targetSparsity: number) => void;
 }
+
+const ChartWrapper = ({ children }: { children: (width: number, height: number) => React.ReactNode }) => {
+    const [ref, size] = useChartDimensions();
+    return (
+        <div ref={ref} className="w-full h-[250px] relative">
+            {size.width > 0 && size.height > 0 ? children(size.width, size.height) : null}
+        </div>
+    );
+};
 
 export const PruningModal: React.FC<PruningModalProps> = ({ run, onClose, onStartFinetuning }) => {
     const [targetSparsity, setTargetSparsity] = useState(0.8);
@@ -101,22 +111,25 @@ export const PruningModal: React.FC<PruningModalProps> = ({ run, onClose, onStar
                     
                      <div>
                         <h3 className="text-lg font-semibold text-gray-300 mb-2">Original Parameter Distribution</h3>
-                        <div className="bg-black/20 p-4 rounded-lg" style={{ height: '250px' }}>
-                            <ResponsiveContainer width="100%" height="100%">
-                                <BarChart data={layerData} layout="vertical" margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
-                                    <XAxis type="number" stroke="rgba(255, 255, 255, 0.5)" tickFormatter={(val) => val.toLocaleString()} />
-                                    <YAxis type="category" dataKey="name" stroke="rgba(255, 255, 255, 0.7)" width={80} tick={{ fontSize: 12 }} />
-                                    <Tooltip
-                                        cursor={{ fill: 'rgba(255,255,255,0.1)' }}
-                                        contentStyle={{
-                                            backgroundColor: 'rgba(30, 41, 59, 0.9)',
-                                            borderColor: 'rgba(255, 255, 255, 0.3)',
-                                        }}
-                                        formatter={(value: number) => [value.toLocaleString(), 'Parameters']}
-                                    />
-                                    <Bar dataKey="params" fill="#22d3ee" />
-                                </BarChart>
-                            </ResponsiveContainer>
+                        <div className="bg-black/20 p-4 rounded-lg relative">
+                            <ChartWrapper>
+                                {(width, height) => (
+                                    <BarChart width={width} height={height} data={layerData} layout="vertical" margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
+                                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" horizontal={true} vertical={false} />
+                                        <XAxis type="number" stroke="rgba(255, 255, 255, 0.5)" tickFormatter={(val) => val.toLocaleString()} />
+                                        <YAxis type="category" dataKey="name" stroke="rgba(255, 255, 255, 0.7)" width={80} tick={{ fontSize: 12 }} />
+                                        <Tooltip
+                                            cursor={{ fill: 'rgba(255,255,255,0.1)' }}
+                                            contentStyle={{
+                                                backgroundColor: 'rgba(30, 41, 59, 0.9)',
+                                                borderColor: 'rgba(255, 255, 255, 0.3)',
+                                            }}
+                                            formatter={(value: number) => [value.toLocaleString(), 'Parameters']}
+                                        />
+                                        <Bar dataKey="params" fill="#22d3ee" isAnimationActive={false} />
+                                    </BarChart>
+                                )}
+                            </ChartWrapper>
                         </div>
                     </div>
 

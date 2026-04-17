@@ -1,11 +1,17 @@
+import React from 'react';
 
-import React, { useEffect, useRef } from 'react';
+/**
+ * RECHARTS IMPLEMENTATION NOTE:
+ * We use custom wrappers and sanitization. Do NOT use ResponsiveContainer.
+ * Please read `/docs/RECHARTS_GUIDE.md` for in-depth chart rendering docs.
+ */
+
 import type { TrainingLog, ModelConfig, ModelInfo, PruningInfo } from '../types';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from 'recharts';
+import { useChartDimensions } from '../hooks/useChartDimensions';
 import { LEARNING_RATE_SCHEDULES } from '../constants';
 import { RocketIcon, EyeIcon, InfoIcon, ChevronDownIcon, CutIcon } from '../constants';
 import type { TrainingRun as FullTrainingRun } from '../App';
-
 
 interface TrainingRun {
     id: number;
@@ -33,28 +39,46 @@ interface TrainingDashboardProps {
 
 const getScheduleName = (id: string) => LEARNING_RATE_SCHEDULES.find(s => s.id === id)?.name || 'Unknown';
 
+const ChartWrapper = ({ children, heightClass = "h-[490px]" }: { children: (width: number, height: number) => React.ReactNode, heightClass?: string }) => {
+    const [ref, size] = useChartDimensions();
+    return (
+        <div ref={ref} className={`w-full ${heightClass} relative`}>
+            {size.width > 0 && size.height > 0 ? children(size.width, size.height) : (
+                <div className="absolute inset-0 flex items-center justify-center text-gray-500 text-sm">
+                    Initializing chart...
+                </div>
+            )}
+        </div>
+    );
+};
+
+const CustomTooltip = ({ active, payload, label }: any) => {
+    if (active && payload && payload.length) {
+        return (
+            <div className="bg-slate-900/95 border border-white/20 p-3 rounded-lg shadow-xl text-xs z-50">
+                <p className="text-gray-300 font-bold mb-2">Epoch {label}</p>
+                {payload.map((entry: any, index: number) => (
+                    <div key={index} className="flex items-center gap-2 mb-1">
+                        <div className="w-2 h-2 rounded-full" style={{ backgroundColor: entry.color }} />
+                        <span className="text-gray-400">{entry.name}:</span>
+                        <span className="text-white font-mono">
+                            {entry.name === 'Learning Rate' 
+                                ? entry.value.toExponential(4) 
+                                : entry.name.includes('Accuracy') 
+                                    ? `${(entry.value * 100).toFixed(2)}%`
+                                    : entry.value.toFixed(4)}
+                        </span>
+                    </div>
+                ))}
+            </div>
+        );
+    }
+    return null;
+};
+
 export const TrainingDashboard: React.FC<TrainingDashboardProps> = (props) => {
     const { isLive, status, onTestModel, onVisualizeModel, onPruneModel, isModelInTest, parentRun } = props;
     
-    const chart1Ref = useRef<HTMLDivElement>(null);
-    const chart2Ref = useRef<HTMLDivElement>(null);
-
-    useEffect(() => {
-        if (isLive) {
-            const logDimensions = (name: string, ref: React.RefObject<HTMLDivElement>) => {
-                if (ref.current) {
-                    const { width, height } = ref.current.getBoundingClientRect();
-                    console.log(`[Chart Instrumentation] ${name} dimensions:`, { width, height });
-                    if (width === 0 || height === 0) {
-                        console.warn(`[Chart Warning] ${name} has zero dimension! Recharts may fail to render.`);
-                    }
-                }
-            };
-            logDimensions('Performance Chart', chart1Ref);
-            logDimensions('Accuracy Chart', chart2Ref);
-        }
-    }, [isLive, props.trainingLog?.length]);
-
     // Consolidate data references
     const runData = isLive
         ? { log: props.trainingLog ?? [], config: props.config!, modelInfo: props.modelInfo, pruning: undefined }
@@ -143,74 +167,96 @@ export const TrainingDashboard: React.FC<TrainingDashboardProps> = (props) => {
             </div>
 
             <div className="flex flex-col gap-8 min-w-0">
-                <div className="bg-black/30 p-4 rounded-xl border border-white/5 min-w-0">
-                    <h3 className="text-sm font-bold text-gray-400 uppercase tracking-widest mb-4 text-center">Performance / LR</h3>
-                    <div ref={chart1Ref} className="h-[350px] w-full relative min-w-0" style={{ height: 350, width: '100%', minWidth: 0 }}>
-                        <ResponsiveContainer width="100%" height="100%" minWidth={0}>
-                            <LineChart data={trainingLog} margin={{ top: 5, right: 10, left: -10, bottom: 5 }}>
-                                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255, 255, 255, 0.05)" vertical={false} />
+                <div className="bg-black/30 p-6 rounded-2xl border border-white/5 shadow-inner">
+                    <h3 className="text-base font-bold text-white mb-6 text-center">Performance vs. Learning Rate</h3>
+                    <ChartWrapper>
+                        {(width, height) => (
+                            <LineChart width={width} height={height} data={trainingLog} margin={{ top: 10, right: 50, left: 10, bottom: 10 }}>
+                                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" vertical={true} horizontal={false} />
                                 <XAxis 
                                     dataKey="epoch" 
-                                    stroke="rgba(255, 255, 255, 0.4)" 
-                                    fontSize={10}
-                                    type="number"
+                                    stroke="#888" 
+                                    tick={{ fill: '#888', fontSize: 12 }}
+                                    axisLine={{ stroke: '#444' }}
+                                    tickLine={false}
                                     domain={[1, config.epochs]}
-                                    allowDataOverflow={true}
-                                />
-                                <YAxis yAxisId="left" stroke="#f472b6" fontSize={10} domain={[0, 'auto']} />
-                                <YAxis yAxisId="right" orientation="right" stroke="#8884d8" fontSize={10} tickFormatter={(val) => val?.toExponential(1) ?? '0'} />
-                                <Tooltip
-                                    contentStyle={{
-                                        backgroundColor: 'rgba(15, 23, 42, 0.95)',
-                                        borderColor: 'rgba(255, 255, 255, 0.2)',
-                                        borderRadius: '8px',
-                                        fontSize: '11px',
-                                    }}
-                                />
-                                <Legend wrapperStyle={{ fontSize: '10px', paddingTop: '10px' }} />
-                                <Line yAxisId="left" type="monotone" dataKey="loss" stroke="#f472b6" strokeWidth={3} dot={false} name="Train Loss" isAnimationActive={false}/>
-                                <Line yAxisId="left" type="monotone" dataKey="val_loss" stroke="#f97316" strokeWidth={2} strokeDasharray="5 5" dot={false} name="Val Loss" isAnimationActive={false} connectNulls />
-                                <Line yAxisId="right" type="stepAfter" dataKey="lr" stroke="#8884d8" strokeWidth={1.5} dot={false} name="LR" isAnimationActive={false} />
-                            </LineChart>
-                        </ResponsiveContainer>
-                    </div>
-                </div>
-
-                <div className="bg-black/30 p-4 rounded-xl border border-white/5 min-w-0">
-                    <h3 className="text-sm font-bold text-gray-400 uppercase tracking-widest mb-4 text-center">Accuracy History</h3>
-                    <div ref={chart2Ref} className="h-[350px] w-full relative min-w-0" style={{ height: 350, width: '100%', minWidth: 0 }}>
-                        <ResponsiveContainer width="100%" height="100%" minWidth={0}>
-                            <LineChart data={trainingLog} margin={{ top: 5, right: 10, left: -10, bottom: 5 }}>
-                                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255, 255, 255, 0.05)" vertical={false} />
-                                <XAxis 
-                                    dataKey="epoch" 
-                                    stroke="rgba(255, 255, 255, 0.4)" 
-                                    fontSize={10}
                                     type="number"
-                                    domain={[1, config.epochs]}
-                                    allowDataOverflow={true}
                                 />
                                 <YAxis 
-                                    stroke="rgba(255, 255, 255, 0.6)" 
-                                    fontSize={10}
-                                    tickFormatter={(value) => `${(value * 100).toFixed(0)}%`}
-                                    domain={[0, 1]}
-                                 />
-                                <Tooltip
-                                    contentStyle={{
-                                        backgroundColor: 'rgba(15, 23, 42, 0.95)',
-                                        borderColor: 'rgba(255, 255, 255, 0.2)',
-                                        borderRadius: '8px',
-                                        fontSize: '11px'
-                                    }}
-                                    formatter={(value: number) => `${(value * 100).toFixed(2)}%`}
+                                    yAxisId="loss"
+                                    stroke="#888" 
+                                    tick={{ fill: '#888', fontSize: 12 }}
+                                    axisLine={{ stroke: '#444' }}
+                                    tickLine={false}
+                                    domain={[0, 'auto']}
+                                    tickFormatter={(val) => val.toFixed(2)}
                                 />
-                                <Legend wrapperStyle={{ fontSize: '10px', paddingTop: '10px' }} />
-                                <Line type="monotone" dataKey="accuracy" stroke="#22d3ee" strokeWidth={3} dot={false} name="Train Acc" isAnimationActive={false} />
-                                <Line type="monotone" dataKey="val_accuracy" stroke="#4ade80" strokeWidth={2} strokeDasharray="5 5" dot={false} name="Val Acc" isAnimationActive={false} connectNulls />
+                                <YAxis 
+                                    yAxisId="lr"
+                                    orientation="right"
+                                    stroke="#888" 
+                                    tick={{ fill: '#888', fontSize: 12 }}
+                                    axisLine={{ stroke: '#444' }}
+                                    tickLine={false}
+                                    domain={[0, 'auto']}
+                                    tickFormatter={(val) => val.toExponential(1)}
+                                />
+                                <Tooltip content={<CustomTooltip />} cursor={{ stroke: 'rgba(255,255,255,0.1)', strokeWidth: 2 }} />
+                                <Legend 
+                                    verticalAlign="bottom" 
+                                    height={36} 
+                                    iconType="circle"
+                                    wrapperStyle={{ fontSize: '12px', color: '#888', paddingTop: '20px' }}
+                                />
+                                <Line yAxisId="lr" type="monotone" dataKey="lr" name="Learning Rate" stroke="#8b5cf6" strokeWidth={2} dot={false} isAnimationActive={false} />
+                                <Line yAxisId="loss" type="monotone" dataKey="loss" name="Training Loss" stroke="#ec4899" strokeWidth={2} dot={false} isAnimationActive={false} />
+                                <Line yAxisId="loss" type="monotone" dataKey="val_loss" name="Validation Loss" stroke="#f97316" strokeWidth={2} dot={false} isAnimationActive={false} connectNulls />
                             </LineChart>
-                        </ResponsiveContainer>
-                    </div>
+                        )}
+                    </ChartWrapper>
+                </div>
+
+                <div className="bg-black/30 p-6 rounded-2xl border border-white/5 shadow-inner">
+                    <h3 className="text-base font-bold text-white mb-6 text-center">Accuracy History</h3>
+                    <ChartWrapper>
+                        {(width, height) => (
+                            <LineChart width={width} height={height} data={trainingLog} margin={{ top: 10, right: 20, left: 10, bottom: 10 }}>
+                                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" vertical={true} horizontal={false} />
+                                <XAxis 
+                                    dataKey="epoch" 
+                                    stroke="#888" 
+                                    tick={{ fill: '#888', fontSize: 12 }}
+                                    axisLine={{ stroke: '#444' }}
+                                    tickLine={false}
+                                    domain={[1, config.epochs]}
+                                    type="number"
+                                />
+                                <YAxis 
+                                    stroke="#888" 
+                                    tick={{ fill: '#888', fontSize: 12 }}
+                                    axisLine={{ stroke: '#444' }}
+                                    tickLine={false}
+                                    domain={[
+                                        (dataMin: number) => {
+                                            const min = isFinite(dataMin) ? dataMin : 0;
+                                            return Math.max(0, Math.floor(min * 20) / 20);
+                                        }, 
+                                        1
+                                    ]}
+                                    tickFormatter={(val) => `${(val * 100).toFixed(0)}%`}
+                                />
+                                <Tooltip content={<CustomTooltip />} cursor={{ stroke: 'rgba(255,255,255,0.1)', strokeWidth: 2 }} />
+                                <Legend 
+                                    verticalAlign="bottom" 
+                                    height={36} 
+                                    iconType="circle"
+                                    wrapperStyle={{ fontSize: '12px', color: '#888', paddingTop: '20px' }}
+                                />
+                                <Line type="monotone" dataKey="accuracy" name="Training Accuracy" stroke="#06b6d4" strokeWidth={2} dot={false} isAnimationActive={false} />
+                                <Line type="monotone" dataKey="val_accuracy" name="Validation Accuracy" stroke="#10b981" strokeWidth={2} dot={false} isAnimationActive={false} connectNulls />
+                            </LineChart>
+                        )}
+                    </ChartWrapper>
                 </div>
             </div>
         </div>

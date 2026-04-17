@@ -19,6 +19,7 @@ export function getLearningRate(
         case 'step': {
             const dropRate = 0.5;
             const epochsPerDrop = Math.ceil(totalEpochs / 4);
+            if (epochsPerDrop === 0) return initialLr;
             return initialLr * Math.pow(dropRate, Math.floor((epoch + 1) / epochsPerDrop));
         }
 
@@ -36,6 +37,7 @@ export function getLearningRate(
         case 'cosine-restarts': {
             const numRestarts = 3;
             const cycleLength = Math.ceil(totalEpochs / numRestarts);
+            if (cycleLength <= 0) return initialLr;
             const currentEpochInCycle = epoch % cycleLength;
             const cosDecay = 0.5 * (1 + Math.cos(Math.PI * currentEpochInCycle / cycleLength));
             return minLr + (initialLr - minLr) * cosDecay;
@@ -47,6 +49,7 @@ export function getLearningRate(
                 return initialLr * (epoch + 1) / warmupEpochs;
             }
             const decayEpochs = totalEpochs - warmupEpochs;
+            if (decayEpochs <= 0) return minLr;
             const currentDecayEpoch = epoch - warmupEpochs;
             const cosDecay = 0.5 * (1 + Math.cos(Math.PI * currentDecayEpoch / decayEpochs));
             return minLr + (initialLr - minLr) * cosDecay;
@@ -54,6 +57,12 @@ export function getLearningRate(
         
         case 'one-cycle': {
             const peakEpoch = Math.floor(totalEpochs * 0.4);
+            if (peakEpoch <= 0) {
+                const decayEpochs = totalEpochs;
+                if (decayEpochs <= 0) return minLr;
+                const cosAnn = 0.5 * (1 + Math.cos(Math.PI * epoch / decayEpochs));
+                return minLr + (initialLr - minLr) * cosAnn;
+            }
             if (epoch < peakEpoch) {
                 // Ramp up
                 const cosAnn = 0.5 * (1 - Math.cos(Math.PI * epoch / peakEpoch));
@@ -61,6 +70,7 @@ export function getLearningRate(
             } else {
                 // Ramp down
                 const decayEpochs = totalEpochs - peakEpoch;
+                if (decayEpochs <= 0) return minLr;
                 const currentDecayEpoch = epoch - peakEpoch;
                 const cosAnn = 0.5 * (1 + Math.cos(Math.PI * currentDecayEpoch / decayEpochs));
                 return minLr + (initialLr - minLr) * cosAnn;
